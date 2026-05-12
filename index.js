@@ -9,12 +9,27 @@ require('dotenv').config();
 const app = express();
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
+  origin: process.env.FRONTEND_URL || 'https://sso-service1.onrender.com', // fallback, чтобы не было undefined
   credentials: true
 }));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.static('public'));
+
+// ====== ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ======
+const requiredEnv = [
+  'JWT_SECRET',
+  'VK_CLIENT_ID', 'VK_CLIENT_SECRET', 'VK_REDIRECT_URI',
+  'YANDEX_CLIENT_ID', 'YANDEX_CLIENT_SECRET', 'YANDEX_REDIRECT_URI',
+  'MAILRU_CLIENT_ID', 'MAILRU_CLIENT_SECRET', 'MAILRU_REDIRECT_URI',
+  'FRONTEND_URL'
+];
+for (const key of requiredEnv) {
+  if (!process.env[key]) {
+    console.error(`❌ Отсутствует обязательная переменная: ${key}`);
+    process.exit(1);
+  }
+}
 
 // ====== УНИФИЦИРОВАННЫЙ ПОЛЬЗОВАТЕЛЬ ======
 class UnifiedUser {
@@ -35,13 +50,13 @@ function generateTokens(user) {
     process.env.JWT_SECRET,
     { expiresIn: '15m' }
   );
-  
+
   const refreshToken = jwt.sign(
-    { userId: user.id, type: 'refresh' },
+    { userId: user.id, email: user.email, provider: user.provider, type: 'refresh' }, // добавлены email и provider
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );
-  
+
   return { accessToken, refreshToken };
 }
 
@@ -49,9 +64,9 @@ function generateTokens(user) {
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  
+
   if (!token) return res.status(401).json({ error: 'Токен отсутствует' });
-  
+
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: 'Недействительный токен' });
     req.user = user;
@@ -68,14 +83,14 @@ app.get('/auth/vk', (req, res) => {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'email');
   url.searchParams.set('state', state);
-  
+
   res.json({ authUrl: url.toString() });
 });
 
 app.get('/auth/vk/callback', async (req, res) => {
   try {
     const { code } = req.query;
-    
+
     const tokenResponse = await axios.post('https://id.vk.com/oauth2/auth', null, {
       params: {
         grant_type: 'authorization_code',
@@ -85,9 +100,10 @@ app.get('/auth/vk/callback', async (req, res) => {
         redirect_uri: process.env.VK_REDIRECT_URI
       }
     });
-    
+
     const { access_token, user_id, email } = tokenResponse.data;
-    
+
+    // Используем новый VK ID API
     const userResponse = await axios.get('https://id.vk.com/method/users.get', {
       params: {
         access_token,
@@ -95,9 +111,11 @@ app.get('/auth/vk/callback', async (req, res) => {
         fields: 'photo_200,first_name,last_name'
       }
     });
-    
-    const vkUser = userResponse.data.response[0];
-    
+
+    // Безопасная проверка
+    const vkUser = userResponse.data?.response?.[0];
+    if (!vkUser) throw new Error('VK user data missing');
+
     const user = new UnifiedUser(
       'vk',
       vkUser.id,
@@ -105,18 +123,18 @@ app.get('/auth/vk/callback', async (req, res) => {
       `${vkUser.first_name} ${vkUser.last_name}`,
       vkUser.photo_200
     );
-    
+
     const tokens = generateTokens(user);
-    
+
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production', // в production – true (Render)
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
-    
+
     res.redirect(`/?token=${tokens.accessToken}`);
-    
+
   } catch (error) {
     console.error('VK auth error:', error.response?.data || error.message);
     res.redirect('/?error=vk_auth_failed');
@@ -131,25 +149,25 @@ app.get('/auth/yandex', (req, res) => {
   url.searchParams.set('redirect_uri', process.env.YANDEX_REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('state', state);
-  
+
   res.json({ authUrl: url.toString() });
 });
 
 app.get('/auth/yandex/callback', async (req, res) => {
   try {
     const { code } = req.query;
-    
-    const params = new URLSearchParams();
-params.append('grant_type', 'authorization_code');
-params.append('code', code);
-params.append('client_id', process.env.YANDEX_CLIENT_ID);
-params.append('client_secret', process.env.YANDEX_CLIENT_SECRET);
-params.append('redirect_uri', process.env.YANDEX_REDIRECT_URI);
 
-const tokenResponse = await axios.post('https://oauth.yandex.ru/token', params);
-    
+    const params = new URLSearchParams();
+    params.append('grant_type', 'authorization_code');
+    params.append('code', code);
+    params.append('client_id', process.env.YANDEX_CLIENT_ID);
+    params.append('client_secret', process.env.YANDEX_CLIENT_SECRET);
+    params.append('redirect_uri', process.env.YANDEX_REDIRECT_URI);
+
+    const tokenResponse = await axios.post('https://oauth.yandex.ru/token', params);
+
     const { access_token } = tokenResponse.data;
-    
+
     const userResponse = await axios.get('https://login.yandex.ru/info', {
       headers: {
         Authorization: `OAuth ${access_token}`
@@ -158,9 +176,9 @@ const tokenResponse = await axios.post('https://oauth.yandex.ru/token', params);
         format: 'json'
       }
     });
-    
+
     const yaUser = userResponse.data;
-    
+
     const user = new UnifiedUser(
       'yandex',
       yaUser.id,
@@ -168,18 +186,18 @@ const tokenResponse = await axios.post('https://oauth.yandex.ru/token', params);
       yaUser.display_name || yaUser.real_name || yaUser.login || 'Yandex User',
       yaUser.default_avatar_id ? `https://avatars.yandex.net/get-yapic/${yaUser.default_avatar_id}/islands-200` : null
     );
-    
+
     const tokens = generateTokens(user);
-    
+
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
-    
+
     res.redirect(`/?token=${tokens.accessToken}`);
-    
+
   } catch (error) {
     console.error('Yandex auth error:', error.response?.data || error.message);
     res.redirect('/?error=yandex_auth_failed');
@@ -195,15 +213,15 @@ app.get('/auth/mailru', (req, res) => {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'userinfo');
   url.searchParams.set('state', state);
-  
+
   res.json({ authUrl: url.toString() });
 });
 
 app.get('/auth/mailru/callback', async (req, res) => {
   try {
     const { code } = req.query;
-    
-        const params = new URLSearchParams();
+
+    const params = new URLSearchParams();
     params.append('grant_type', 'authorization_code');
     params.append('code', code);
     params.append('client_id', process.env.MAILRU_CLIENT_ID);
@@ -211,9 +229,9 @@ app.get('/auth/mailru/callback', async (req, res) => {
     params.append('redirect_uri', process.env.MAILRU_REDIRECT_URI);
 
     const tokenResponse = await axios.post('https://connect.mail.ru/oauth/token', params);
-    
+
     const { access_token } = tokenResponse.data;
-    
+
     const userResponse = await axios.get('https://www.appsmail.ru/platform/api', {
       params: {
         method: 'users.getInfo',
@@ -222,9 +240,9 @@ app.get('/auth/mailru/callback', async (req, res) => {
         secure: 1
       }
     });
-    
+
     const mailUser = userResponse.data[0];
-    
+
     const user = new UnifiedUser(
       'mailru',
       mailUser.uid,
@@ -232,18 +250,18 @@ app.get('/auth/mailru/callback', async (req, res) => {
       `${mailUser.first_name} ${mailUser.last_name}`,
       mailUser.pic_50 || mailUser.pic_big
     );
-    
+
     const tokens = generateTokens(user);
-    
+
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
-    
+
     res.redirect(`/?token=${tokens.accessToken}`);
-    
+
   } catch (error) {
     console.error('Mail.ru auth error:', error.response?.data || error.message);
     res.redirect('/?error=mailru_auth_failed');
@@ -253,35 +271,36 @@ app.get('/auth/mailru/callback', async (req, res) => {
 // ====== ОБНОВЛЕНИЕ ТОКЕНА ======
 app.post('/auth/refresh', async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
-  
+
   if (!refreshToken) {
     return res.status(401).json({ error: 'Refresh token отсутствует' });
   }
-  
+
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-    
+
     if (decoded.type !== 'refresh') {
       throw new Error('Неверный тип токена');
     }
-    
+
+    // Теперь decoded содержит email и provider
     const user = {
       id: decoded.userId,
       email: decoded.email,
       provider: decoded.provider
     };
-    
+
     const tokens = generateTokens(user);
-    
+
     res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
-    
+
     res.json({ accessToken: tokens.accessToken });
-    
+
   } catch (error) {
     res.status(403).json({ error: 'Недействительный refresh token' });
   }
