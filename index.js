@@ -139,18 +139,14 @@ app.get('/auth/yandex/callback', async (req, res) => {
   try {
     const { code } = req.query;
     
-    const tokenResponse = await axios.post('https://oauth.yandex.ru/token', null, {
-      params: {
-        grant_type: 'authorization_code',
-        code,
-        client_id: process.env.YANDEX_CLIENT_ID,
-        client_secret: process.env.YANDEX_CLIENT_SECRET,
-        redirect_uri: process.env.YANDEX_REDIRECT_URI
-      },
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    });
+    const params = new URLSearchParams();
+params.append('grant_type', 'authorization_code');
+params.append('code', code);
+params.append('client_id', process.env.YANDEX_CLIENT_ID);
+params.append('client_secret', process.env.YANDEX_CLIENT_SECRET);
+params.append('redirect_uri', process.env.YANDEX_REDIRECT_URI);
+
+const tokenResponse = await axios.post('https://oauth.yandex.ru/token', params);
     
     const { access_token } = tokenResponse.data;
     
