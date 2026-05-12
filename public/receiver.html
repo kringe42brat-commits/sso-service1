@@ -1,10 +1,7 @@
 <html>
 <body>
-<script src="//connect.mail.ru/js/loader.js"></script>
 <script>
-mailru.loader.require('receiver', function(){
-	mailru.receiver.init();
-})
+  window.location.href = '/auth/mailru/callback' + window.location.search;
 </script>
 </body>
-</html> 
+</html>
