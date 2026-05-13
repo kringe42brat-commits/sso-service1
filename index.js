@@ -3,18 +3,53 @@ const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
-const path = require('path');
+const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
 require('dotenv').config();
 
 const app = express();
 
+// ====== БЕЗОПАСНОСТЬ ======
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'"],
+    },
+  },
+}));
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://sso-service1.onrender.com', // fallback, чтобы не было undefined
+  origin: process.env.FRONTEND_URL || 'https://sso-service1.onrender.com',
   credentials: true
 }));
+
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 app.use(express.static('public'));
+
+// ====== RATE LIMITING ======
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { error: 'Слишком много запросов. Попробуйте через 15 минут.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const refreshLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  message: { error: 'Слишком много попыток обновления токена.' },
+});
+
+// ====== AXIOS С ТАЙМАУТОМ ======
+const axiosInstance = axios.create({ timeout: 10000 });
 
 // ====== ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ======
 const requiredEnv = [
@@ -31,6 +66,36 @@ for (const key of requiredEnv) {
   }
 }
 
+// ====== CSRF STATE STORE ======
+const pendingStates = new Map();
+setInterval(() => {
+  const now = Date.now();
+  pendingStates.forEach((ts, state) => {
+    if (now - ts > 10 * 60 * 1000) pendingStates.delete(state);
+  });
+}, 5 * 60 * 1000);
+
+function generateState() {
+  const state = crypto.randomBytes(32).toString('hex');
+  pendingStates.set(state, Date.now());
+  return state;
+}
+
+function validateState(state) {
+  if (!state || !pendingStates.has(state)) return false;
+  pendingStates.delete(state);
+  return true;
+}
+
+// ====== IN-MEMORY ТОКЕН-БЛЭКЛИСТ ======
+const revokedTokens = new Set();
+setInterval(() => {
+  revokedTokens.forEach(token => {
+    try { jwt.verify(token, process.env.JWT_SECRET); }
+    catch { revokedTokens.delete(token); }
+  });
+}, 30 * 60 * 1000);
+
 // ====== УНИФИЦИРОВАННЫЙ ПОЛЬЗОВАТЕЛЬ ======
 class UnifiedUser {
   constructor(provider, providerId, email, name, avatar) {
@@ -45,96 +110,74 @@ class UnifiedUser {
 
 // ====== ГЕНЕРАЦИЯ JWT ======
 function generateTokens(user) {
-  const accessToken = jwt.sign(
-    { userId: user.id, email: user.email, provider: user.provider },
-    process.env.JWT_SECRET,
-    { expiresIn: '15m' }
-  );
-
-  const refreshToken = jwt.sign(
-    { userId: user.id, email: user.email, provider: user.provider, type: 'refresh' }, // добавлены email и provider
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-
+  const payload = { userId: user.id, email: user.email, provider: user.provider, name: user.name, avatar: user.avatar };
+  const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+  const refreshToken = jwt.sign({ ...payload, type: 'refresh' }, process.env.JWT_SECRET, { expiresIn: '7d' });
   return { accessToken, refreshToken };
 }
 
-// ====== МИДДЛВАР ДЛЯ ПРОВЕРКИ JWT ======
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  maxAge: 7 * 24 * 60 * 60 * 1000
+};
+
+// ====== МИДДЛВАР ПРОВЕРКИ JWT ======
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-
   if (!token) return res.status(401).json({ error: 'Токен отсутствует' });
-
+  if (revokedTokens.has(token)) return res.status(401).json({ error: 'Токен отозван' });
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Недействительный токен' });
+    if (err) {
+      if (err.name === 'TokenExpiredError') return res.status(401).json({ error: 'Токен истёк' });
+      return res.status(403).json({ error: 'Недействительный токен' });
+    }
     req.user = user;
+    req.token = token;
     next();
   });
 }
 
+// ====== HEALTH CHECK ======
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString(), providers: ['vk', 'yandex', 'mailru'] });
+});
+
 // ====== VK ID ======
-app.get('/auth/vk', (req, res) => {
-  const state = req.query.state || 'random_state';
+app.get('/auth/vk', authLimiter, (req, res) => {
+  const state = generateState();
   const url = new URL('https://id.vk.com/authorize');
   url.searchParams.set('client_id', process.env.VK_CLIENT_ID);
   url.searchParams.set('redirect_uri', process.env.VK_REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'email');
   url.searchParams.set('state', state);
-
   res.json({ authUrl: url.toString() });
 });
 
 app.get('/auth/vk/callback', async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
+    if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
+    if (!validateState(state)) return res.redirect('/?error=invalid_state');
 
-    const tokenResponse = await axios.post('https://id.vk.com/oauth2/auth', null, {
-      params: {
-        grant_type: 'authorization_code',
-        code,
-        client_id: process.env.VK_CLIENT_ID,
-        client_secret: process.env.VK_CLIENT_SECRET,
-        redirect_uri: process.env.VK_REDIRECT_URI
-      }
+    const tokenResponse = await axiosInstance.post('https://id.vk.com/oauth2/auth', null, {
+      params: { grant_type: 'authorization_code', code, client_id: process.env.VK_CLIENT_ID, client_secret: process.env.VK_CLIENT_SECRET, redirect_uri: process.env.VK_REDIRECT_URI }
     });
-
     const { access_token, user_id, email } = tokenResponse.data;
 
-    // Используем новый VK ID API
-    const userResponse = await axios.get('https://id.vk.com/method/users.get', {
-      params: {
-        access_token,
-        user_ids: user_id,
-        fields: 'photo_200,first_name,last_name'
-      }
+    const userResponse = await axiosInstance.get('https://id.vk.com/method/users.get', {
+      params: { access_token, user_ids: user_id, fields: 'photo_200,first_name,last_name' }
     });
-
-    // Безопасная проверка
     const vkUser = userResponse.data?.response?.[0];
     if (!vkUser) throw new Error('VK user data missing');
 
-    const user = new UnifiedUser(
-      'vk',
-      vkUser.id,
-      email || `${vkUser.id}@vk.com`,
-      `${vkUser.first_name} ${vkUser.last_name}`,
-      vkUser.photo_200
-    );
-
+    const user = new UnifiedUser('vk', vkUser.id, email || `${vkUser.id}@vk.com`, `${vkUser.first_name} ${vkUser.last_name}`, vkUser.photo_200);
     const tokens = generateTokens(user);
-
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // в production – true (Render)
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
+    res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.redirect(`/?token=${tokens.accessToken}`);
-
   } catch (error) {
     console.error('VK auth error:', error.response?.data || error.message);
     res.redirect('/?error=vk_auth_failed');
@@ -142,62 +185,36 @@ app.get('/auth/vk/callback', async (req, res) => {
 });
 
 // ====== ЯНДЕКС ID ======
-app.get('/auth/yandex', (req, res) => {
-  const state = req.query.state || 'random_state';
+app.get('/auth/yandex', authLimiter, (req, res) => {
+  const state = generateState();
   const url = new URL('https://oauth.yandex.ru/authorize');
   url.searchParams.set('client_id', process.env.YANDEX_CLIENT_ID);
   url.searchParams.set('redirect_uri', process.env.YANDEX_REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('state', state);
-
   res.json({ authUrl: url.toString() });
 });
 
 app.get('/auth/yandex/callback', async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
+    if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
+    if (!validateState(state)) return res.redirect('/?error=invalid_state');
 
-    const params = new URLSearchParams();
-    params.append('grant_type', 'authorization_code');
-    params.append('code', code);
-    params.append('client_id', process.env.YANDEX_CLIENT_ID);
-    params.append('client_secret', process.env.YANDEX_CLIENT_SECRET);
-    params.append('redirect_uri', process.env.YANDEX_REDIRECT_URI);
-
-    const tokenResponse = await axios.post('https://oauth.yandex.ru/token', params);
-
+    const params = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: process.env.YANDEX_CLIENT_ID, client_secret: process.env.YANDEX_CLIENT_SECRET, redirect_uri: process.env.YANDEX_REDIRECT_URI });
+    const tokenResponse = await axiosInstance.post('https://oauth.yandex.ru/token', params);
     const { access_token } = tokenResponse.data;
 
-    const userResponse = await axios.get('https://login.yandex.ru/info', {
-      headers: {
-        Authorization: `OAuth ${access_token}`
-      },
-      params: {
-        format: 'json'
-      }
+    const userResponse = await axiosInstance.get('https://login.yandex.ru/info', {
+      headers: { Authorization: `OAuth ${access_token}` },
+      params: { format: 'json' }
     });
-
     const yaUser = userResponse.data;
 
-    const user = new UnifiedUser(
-      'yandex',
-      yaUser.id,
-      yaUser.default_email || yaUser.emails?.[0] || `${yaUser.id}@yandex.ru`,
-      yaUser.display_name || yaUser.real_name || yaUser.login || 'Yandex User',
-      yaUser.default_avatar_id ? `https://avatars.yandex.net/get-yapic/${yaUser.default_avatar_id}/islands-200` : null
-    );
-
+    const user = new UnifiedUser('yandex', yaUser.id, yaUser.default_email || yaUser.emails?.[0] || `${yaUser.id}@yandex.ru`, yaUser.display_name || yaUser.real_name || yaUser.login || 'Yandex User', yaUser.default_avatar_id ? `https://avatars.yandex.net/get-yapic/${yaUser.default_avatar_id}/islands-200` : null);
     const tokens = generateTokens(user);
-
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
+    res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.redirect(`/?token=${tokens.accessToken}`);
-
   } catch (error) {
     console.error('Yandex auth error:', error.response?.data || error.message);
     res.redirect('/?error=yandex_auth_failed');
@@ -205,63 +222,37 @@ app.get('/auth/yandex/callback', async (req, res) => {
 });
 
 // ====== MAIL.RU ======
-app.get('/auth/mailru', (req, res) => {
-  const state = req.query.state || 'random_state';
+app.get('/auth/mailru', authLimiter, (req, res) => {
+  const state = generateState();
   const url = new URL('https://connect.mail.ru/oauth/authorize');
   url.searchParams.set('client_id', process.env.MAILRU_CLIENT_ID);
   url.searchParams.set('redirect_uri', process.env.MAILRU_REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'userinfo');
   url.searchParams.set('state', state);
-
   res.json({ authUrl: url.toString() });
 });
 
 app.get('/auth/mailru/callback', async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
+    if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
+    if (!validateState(state)) return res.redirect('/?error=invalid_state');
 
-    const params = new URLSearchParams();
-    params.append('grant_type', 'authorization_code');
-    params.append('code', code);
-    params.append('client_id', process.env.MAILRU_CLIENT_ID);
-    params.append('client_secret', process.env.MAILRU_CLIENT_SECRET);
-    params.append('redirect_uri', process.env.MAILRU_REDIRECT_URI);
-
-    const tokenResponse = await axios.post('https://connect.mail.ru/oauth/token', params);
-
+    const params = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: process.env.MAILRU_CLIENT_ID, client_secret: process.env.MAILRU_CLIENT_SECRET, redirect_uri: process.env.MAILRU_REDIRECT_URI });
+    const tokenResponse = await axiosInstance.post('https://connect.mail.ru/oauth/token', params);
     const { access_token } = tokenResponse.data;
 
-    const userResponse = await axios.get('https://www.appsmail.ru/platform/api', {
-      params: {
-        method: 'users.getInfo',
-        app_id: process.env.MAILRU_CLIENT_ID,
-        session_key: access_token,
-        secure: 1
-      }
+    const userResponse = await axiosInstance.get('https://www.appsmail.ru/platform/api', {
+      params: { method: 'users.getInfo', app_id: process.env.MAILRU_CLIENT_ID, session_key: access_token, secure: 1 }
     });
-
     const mailUser = userResponse.data[0];
+    if (!mailUser) throw new Error('Mail.ru user data missing');
 
-    const user = new UnifiedUser(
-      'mailru',
-      mailUser.uid,
-      mailUser.email,
-      `${mailUser.first_name} ${mailUser.last_name}`,
-      mailUser.pic_50 || mailUser.pic_big
-    );
-
+    const user = new UnifiedUser('mailru', mailUser.uid, mailUser.email, `${mailUser.first_name} ${mailUser.last_name}`, mailUser.pic_50 || mailUser.pic_big);
     const tokens = generateTokens(user);
-
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
+    res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.redirect(`/?token=${tokens.accessToken}`);
-
   } catch (error) {
     console.error('Mail.ru auth error:', error.response?.data || error.message);
     res.redirect('/?error=mailru_auth_failed');
@@ -269,64 +260,45 @@ app.get('/auth/mailru/callback', async (req, res) => {
 });
 
 // ====== ОБНОВЛЕНИЕ ТОКЕНА ======
-app.post('/auth/refresh', async (req, res) => {
+app.post('/auth/refresh', refreshLimiter, async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
-
-  if (!refreshToken) {
-    return res.status(401).json({ error: 'Refresh token отсутствует' });
-  }
+  if (!refreshToken) return res.status(401).json({ error: 'Refresh token отсутствует' });
+  if (revokedTokens.has(refreshToken)) return res.status(401).json({ error: 'Refresh token отозван' });
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    if (decoded.type !== 'refresh') throw new Error('Неверный тип токена');
 
-    if (decoded.type !== 'refresh') {
-      throw new Error('Неверный тип токена');
-    }
-
-    // Теперь decoded содержит email и provider
-    const user = {
-      id: decoded.userId,
-      email: decoded.email,
-      provider: decoded.provider
-    };
-
+    const user = { id: decoded.userId, email: decoded.email, provider: decoded.provider, name: decoded.name, avatar: decoded.avatar };
     const tokens = generateTokens(user);
-
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
+    res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.json({ accessToken: tokens.accessToken });
-
   } catch (error) {
     res.status(403).json({ error: 'Недействительный refresh token' });
   }
 });
 
-// ====== ПРОВЕРКА ТЕКУЩЕГО ПОЛЬЗОВАТЕЛЯ ======
+// ====== ТЕКУЩИЙ ПОЛЬЗОВАТЕЛЬ ======
 app.get('/auth/me', authenticateToken, (req, res) => {
-  res.json({
-    userId: req.user.userId,
-    email: req.user.email,
-    provider: req.user.provider
-  });
+  res.json({ userId: req.user.userId, email: req.user.email, provider: req.user.provider, name: req.user.name || null, avatar: req.user.avatar || null });
 });
 
 // ====== ВЫХОД ======
-app.post('/auth/logout', (req, res) => {
+app.post('/auth/logout', authenticateToken, (req, res) => {
+  revokedTokens.add(req.token);
   res.clearCookie('refreshToken');
   res.json({ message: 'Выход выполнен успешно' });
 });
 
 // ====== ЗАЩИЩЁННЫЙ РОУТ ======
 app.get('/api/protected', authenticateToken, (req, res) => {
-  res.json({
-    message: 'Это защищённые данные',
-    user: req.user
-  });
+  res.json({ message: 'Это защищённые данные', user: req.user });
+});
+
+// ====== ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ОШИБОК ======
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Внутренняя ошибка сервера' });
 });
 
 const PORT = process.env.PORT || 3001;
