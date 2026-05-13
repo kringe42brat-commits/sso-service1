@@ -536,23 +536,31 @@
     }
 
     async function checkAuth() {
-      const token = localStorage.getItem('accessToken');
-      if (!token) { show('login-section'); return; }
+  const token = localStorage.getItem('accessToken');
+  if (!token) { show('login-section'); return; }
 
-      try {
-        const res = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok) {
-          renderUser(await res.json());
-        } else if (res.status === 401) {
-          await tryRefresh();
-        } else {
-          localStorage.removeItem('accessToken');
-          show('login-section');
-        }
-      } catch {
-        show('login-section');
-      }
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal
+    });
+    clearTimeout(tid);
+
+    if (res.ok) {
+      renderUser(await res.json());
+    } else if (res.status === 401) {
+      await tryRefresh();
+    } else {
+      localStorage.removeItem('accessToken');
+      show('login-section');
     }
+  } catch {
+    localStorage.removeItem('accessToken');
+    show('login-section');
+  }
+}
 
     async function tryRefresh() {
       try {
