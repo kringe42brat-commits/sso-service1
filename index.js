@@ -149,12 +149,13 @@ app.get('/health', (req, res) => {
 // ====== VK ID ======
 app.get('/auth/vk', authLimiter, (req, res) => {
   const state = generateState();
-  const url = new URL('https://id.vk.com/authorize');
+  const url = new URL('https://oauth.vk.com/authorize');
   url.searchParams.set('client_id', process.env.VK_CLIENT_ID);
   url.searchParams.set('redirect_uri', process.env.VK_REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'email');
   url.searchParams.set('state', state);
+  url.searchParams.set('v', '5.131');
   res.json({ authUrl: url.toString() });
 });
 
@@ -164,18 +165,35 @@ app.get('/auth/vk/callback', async (req, res) => {
     if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
     if (!validateState(state)) return res.redirect('/?error=invalid_state');
 
-    const tokenResponse = await axiosInstance.post('https://id.vk.com/oauth2/auth', null, {
-      params: { grant_type: 'authorization_code', code, client_id: process.env.VK_CLIENT_ID, client_secret: process.env.VK_CLIENT_SECRET, redirect_uri: process.env.VK_REDIRECT_URI }
+    const tokenResponse = await axiosInstance.get('https://oauth.vk.com/access_token', {
+      params: {
+        client_id: process.env.VK_CLIENT_ID,
+        client_secret: process.env.VK_CLIENT_SECRET,
+        redirect_uri: process.env.VK_REDIRECT_URI,
+        code
+      }
     });
+
     const { access_token, user_id, email } = tokenResponse.data;
 
-    const userResponse = await axiosInstance.get('https://id.vk.com/method/users.get', {
-      params: { access_token, user_ids: user_id, fields: 'photo_200,first_name,last_name' }
+    const userResponse = await axiosInstance.get('https://api.vk.com/method/users.get', {
+      params: {
+        access_token,
+        user_ids: user_id,
+        fields: 'photo_200',
+        v: '5.131'
+      }
     });
+
     const vkUser = userResponse.data?.response?.[0];
     if (!vkUser) throw new Error('VK user data missing');
 
-    const user = new UnifiedUser('vk', vkUser.id, email || `${vkUser.id}@vk.com`, `${vkUser.first_name} ${vkUser.last_name}`, vkUser.photo_200);
+    const user = new UnifiedUser(
+      'vk', vkUser.id,
+      email || `${vkUser.id}@vk.com`,
+      `${vkUser.first_name} ${vkUser.last_name}`,
+      vkUser.photo_200
+    );
     const tokens = generateTokens(user);
     res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.redirect(`/?token=${tokens.accessToken}`);
@@ -184,44 +202,6 @@ app.get('/auth/vk/callback', async (req, res) => {
     res.redirect('/?error=vk_auth_failed');
   }
 });
-
-// ====== ЯНДЕКС ID ======
-app.get('/auth/yandex', authLimiter, (req, res) => {
-  const state = generateState();
-  const url = new URL('https://oauth.yandex.ru/authorize');
-  url.searchParams.set('client_id', process.env.YANDEX_CLIENT_ID);
-  url.searchParams.set('redirect_uri', process.env.YANDEX_REDIRECT_URI);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('state', state);
-  res.json({ authUrl: url.toString() });
-});
-
-app.get('/auth/yandex/callback', async (req, res) => {
-  try {
-    const { code, state } = req.query;
-    if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
-    if (!validateState(state)) return res.redirect('/?error=invalid_state');
-
-    const params = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: process.env.YANDEX_CLIENT_ID, client_secret: process.env.YANDEX_CLIENT_SECRET, redirect_uri: process.env.YANDEX_REDIRECT_URI });
-    const tokenResponse = await axiosInstance.post('https://oauth.yandex.ru/token', params);
-    const { access_token } = tokenResponse.data;
-
-    const userResponse = await axiosInstance.get('https://login.yandex.ru/info', {
-      headers: { Authorization: `OAuth ${access_token}` },
-      params: { format: 'json' }
-    });
-    const yaUser = userResponse.data;
-
-    const user = new UnifiedUser('yandex', yaUser.id, yaUser.default_email || yaUser.emails?.[0] || `${yaUser.id}@yandex.ru`, yaUser.display_name || yaUser.real_name || yaUser.login || 'Yandex User', yaUser.default_avatar_id ? `https://avatars.yandex.net/get-yapic/${yaUser.default_avatar_id}/islands-200` : null);
-    const tokens = generateTokens(user);
-    res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
-    res.redirect(`/?token=${tokens.accessToken}`);
-  } catch (error) {
-    console.error('Yandex auth error:', error.response?.data || error.message);
-    res.redirect('/?error=yandex_auth_failed');
-  }
-});
-
 // ====== MAIL.RU ======
 app.get('/auth/mailru', authLimiter, (req, res) => {
   const state = generateState();
