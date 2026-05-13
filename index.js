@@ -1,3 +1,4 @@
+cat > /mnt/user-data/outputs/index.js << 'EOF'
 const express = require('express');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
@@ -67,25 +68,35 @@ for (const key of requiredEnv) {
   }
 }
 
-// ====== CSRF STATE STORE ======
-const pendingStates = new Map();
+// ====== CSRF STATE STORE (+ PKCE для VK) ======
+const pendingStates = new Map(); // state -> { ts, codeVerifier }
 setInterval(() => {
   const now = Date.now();
-  pendingStates.forEach((ts, state) => {
-    if (now - ts > 10 * 60 * 1000) pendingStates.delete(state);
+  pendingStates.forEach((val, state) => {
+    if (now - val.ts > 10 * 60 * 1000) pendingStates.delete(state);
   });
 }, 5 * 60 * 1000);
 
-function generateState() {
+function generateState(extra = {}) {
   const state = crypto.randomBytes(32).toString('hex');
-  pendingStates.set(state, Date.now());
+  pendingStates.set(state, { ts: Date.now(), ...extra });
   return state;
 }
 
 function validateState(state) {
-  if (!state || !pendingStates.has(state)) return false;
+  if (!state || !pendingStates.has(state)) return null;
+  const data = pendingStates.get(state);
   pendingStates.delete(state);
-  return true;
+  return data;
+}
+
+// ====== PKCE helpers ======
+function generateCodeVerifier() {
+  return crypto.randomBytes(64).toString('base64url');
+}
+
+function generateCodeChallenge(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
 }
 
 // ====== IN-MEMORY ТОКЕН-БЛЭКЛИСТ ======
@@ -146,16 +157,21 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString(), providers: ['vk', 'yandex', 'mailru'] });
 });
 
-// ====== VK ID ======
+// ====== VK ID (с PKCE) ======
 app.get('/auth/vk', authLimiter, (req, res) => {
-  const state = generateState();
-  const url = new URL('https://oauth.vk.com/authorize');
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const state = generateState({ codeVerifier });
+
+  const url = new URL('https://id.vk.com/authorize');
   url.searchParams.set('client_id', process.env.VK_CLIENT_ID);
   url.searchParams.set('redirect_uri', process.env.VK_REDIRECT_URI);
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'email');
   url.searchParams.set('state', state);
-  url.searchParams.set('v', '5.131');
+  url.searchParams.set('code_challenge', codeChallenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+
   res.json({ authUrl: url.toString() });
 });
 
@@ -163,26 +179,25 @@ app.get('/auth/vk/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
     if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
-    if (!validateState(state)) return res.redirect('/?error=invalid_state');
 
-    const tokenResponse = await axiosInstance.get('https://oauth.vk.com/access_token', {
+    const stateData = validateState(state);
+    if (!stateData) return res.redirect('/?error=invalid_state');
+
+    const tokenResponse = await axiosInstance.post('https://id.vk.com/oauth2/auth', null, {
       params: {
+        grant_type: 'authorization_code',
+        code,
         client_id: process.env.VK_CLIENT_ID,
         client_secret: process.env.VK_CLIENT_SECRET,
         redirect_uri: process.env.VK_REDIRECT_URI,
-        code
+        code_verifier: stateData.codeVerifier,
       }
     });
 
     const { access_token, user_id, email } = tokenResponse.data;
 
-    const userResponse = await axiosInstance.get('https://api.vk.com/method/users.get', {
-      params: {
-        access_token,
-        user_ids: user_id,
-        fields: 'photo_200',
-        v: '5.131'
-      }
+    const userResponse = await axiosInstance.get('https://id.vk.com/method/users.get', {
+      params: { access_token, user_ids: user_id, fields: 'photo_200,first_name,last_name' }
     });
 
     const vkUser = userResponse.data?.response?.[0];
@@ -202,6 +217,55 @@ app.get('/auth/vk/callback', async (req, res) => {
     res.redirect('/?error=vk_auth_failed');
   }
 });
+
+// ====== ЯНДЕКС ID ======
+app.get('/auth/yandex', authLimiter, (req, res) => {
+  const state = generateState();
+  const url = new URL('https://oauth.yandex.ru/authorize');
+  url.searchParams.set('client_id', process.env.YANDEX_CLIENT_ID);
+  url.searchParams.set('redirect_uri', process.env.YANDEX_REDIRECT_URI);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('state', state);
+  res.json({ authUrl: url.toString() });
+});
+
+app.get('/auth/yandex/callback', async (req, res) => {
+  try {
+    const { code, state } = req.query;
+    if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
+    if (!validateState(state)) return res.redirect('/?error=invalid_state');
+
+    const params = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: process.env.YANDEX_CLIENT_ID,
+      client_secret: process.env.YANDEX_CLIENT_SECRET,
+      redirect_uri: process.env.YANDEX_REDIRECT_URI,
+    });
+    const tokenResponse = await axiosInstance.post('https://oauth.yandex.ru/token', params);
+    const { access_token } = tokenResponse.data;
+
+    const userResponse = await axiosInstance.get('https://login.yandex.ru/info', {
+      headers: { Authorization: `OAuth ${access_token}` },
+      params: { format: 'json' }
+    });
+    const yaUser = userResponse.data;
+
+    const user = new UnifiedUser(
+      'yandex', yaUser.id,
+      yaUser.default_email || yaUser.emails?.[0] || `${yaUser.id}@yandex.ru`,
+      yaUser.display_name || yaUser.real_name || yaUser.login || 'Yandex User',
+      yaUser.default_avatar_id ? `https://avatars.yandex.net/get-yapic/${yaUser.default_avatar_id}/islands-200` : null
+    );
+    const tokens = generateTokens(user);
+    res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
+    res.redirect(`/?token=${tokens.accessToken}`);
+  } catch (error) {
+    console.error('Yandex auth error:', error.response?.data || error.message);
+    res.redirect('/?error=yandex_auth_failed');
+  }
+});
+
 // ====== MAIL.RU ======
 app.get('/auth/mailru', authLimiter, (req, res) => {
   const state = generateState();
@@ -220,7 +284,13 @@ app.get('/auth/mailru/callback', async (req, res) => {
     if (!code || typeof code !== 'string') return res.redirect('/?error=invalid_code');
     if (!validateState(state)) return res.redirect('/?error=invalid_state');
 
-    const params = new URLSearchParams({ grant_type: 'authorization_code', code, client_id: process.env.MAILRU_CLIENT_ID, client_secret: process.env.MAILRU_CLIENT_SECRET, redirect_uri: process.env.MAILRU_REDIRECT_URI });
+    const params = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: process.env.MAILRU_CLIENT_ID,
+      client_secret: process.env.MAILRU_CLIENT_SECRET,
+      redirect_uri: process.env.MAILRU_REDIRECT_URI,
+    });
     const tokenResponse = await axiosInstance.post('https://connect.mail.ru/oauth/token', params);
     const { access_token } = tokenResponse.data;
 
@@ -230,7 +300,11 @@ app.get('/auth/mailru/callback', async (req, res) => {
     const mailUser = userResponse.data[0];
     if (!mailUser) throw new Error('Mail.ru user data missing');
 
-    const user = new UnifiedUser('mailru', mailUser.uid, mailUser.email, `${mailUser.first_name} ${mailUser.last_name}`, mailUser.pic_50 || mailUser.pic_big);
+    const user = new UnifiedUser(
+      'mailru', mailUser.uid, mailUser.email,
+      `${mailUser.first_name} ${mailUser.last_name}`,
+      mailUser.pic_50 || mailUser.pic_big
+    );
     const tokens = generateTokens(user);
     res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.redirect(`/?token=${tokens.accessToken}`);
@@ -245,16 +319,14 @@ app.post('/auth/refresh', refreshLimiter, async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) return res.status(401).json({ error: 'Refresh token отсутствует' });
   if (revokedTokens.has(refreshToken)) return res.status(401).json({ error: 'Refresh token отозван' });
-
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
     if (decoded.type !== 'refresh') throw new Error('Неверный тип токена');
-
     const user = { id: decoded.userId, email: decoded.email, provider: decoded.provider, name: decoded.name, avatar: decoded.avatar };
     const tokens = generateTokens(user);
     res.cookie('refreshToken', tokens.refreshToken, cookieOptions);
     res.json({ accessToken: tokens.accessToken });
-  } catch (error) {
+  } catch {
     res.status(403).json({ error: 'Недействительный refresh token' });
   }
 });
@@ -289,3 +361,5 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 Yandex callback: ${process.env.YANDEX_REDIRECT_URI}`);
   console.log(`📡 Mail.ru callback: ${process.env.MAILRU_REDIRECT_URI}`);
 });
+EOF
+echo "Done"
