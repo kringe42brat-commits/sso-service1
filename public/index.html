@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Единый вход</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -22,9 +23,7 @@
       --error: #ff4d6d;
       --radius: 18px;
     }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
+    * { margin:0; padding:0; box-sizing:border-box; }
     body {
       font-family: 'Golos Text', sans-serif;
       background: var(--bg);
@@ -35,580 +34,316 @@
       justify-content: center;
       overflow: hidden;
     }
-
-    /* Фоновая сетка */
     body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
-      background-size: 60px 60px;
-      pointer-events: none;
+      content:'';
+      position:fixed; inset:0;
+      background-image: linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+      background-size:60px 60px;
+      pointer-events:none;
     }
-
-    /* Световое пятно */
     body::after {
-      content: '';
-      position: fixed;
-      width: 600px;
-      height: 600px;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(circle, rgba(0,119,255,0.08) 0%, transparent 65%);
-      pointer-events: none;
-      transition: background 0.6s ease;
+      content:'';
+      position:fixed;
+      width:600px; height:600px;
+      top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      background:radial-gradient(circle, rgba(0,119,255,0.08) 0%, transparent 65%);
+      pointer-events:none;
+      transition:background 0.6s ease;
     }
-    body.glow-ya::after { background: radial-gradient(circle, rgba(252,63,29,0.08) 0%, transparent 65%); }
-    body.glow-mail::after { background: radial-gradient(circle, rgba(22,141,226,0.08) 0%, transparent 65%); }
+    body.glow-ya::after  { background:radial-gradient(circle, rgba(252,63,29,0.08) 0%, transparent 65%); }
+    body.glow-mail::after{ background:radial-gradient(circle, rgba(22,141,226,0.08) 0%, transparent 65%); }
 
     .card {
-      background: var(--card);
-      border: 1px solid var(--card-border);
-      border-radius: var(--radius);
-      width: 100%;
-      max-width: 420px;
-      padding: 40px;
-      position: relative;
-      z-index: 1;
-      animation: cardIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+      background:var(--card);
+      border:1px solid var(--card-border);
+      border-radius:var(--radius);
+      width:100%; max-width:420px;
+      padding:40px;
+      position:relative; z-index:1;
+      animation:cardIn 0.5s cubic-bezier(0.16,1,0.3,1) both;
     }
-
-    @keyframes cardIn {
-      from { opacity: 0; transform: translateY(24px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* Декоративная линия сверху */
+    @keyframes cardIn { from{opacity:0;transform:translateY(24px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
     .card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 20%; right: 20%;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-      border-radius: 999px;
+      content:'';
+      position:absolute; top:0; left:20%; right:20%;
+      height:1px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);
     }
 
-    .logo {
-      width: 48px; height: 48px;
-      background: linear-gradient(135deg, #1a1a2e, #2a2a4a);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 24px;
-      font-size: 22px;
-    }
+    .logo { width:48px; height:48px; background:linear-gradient(135deg,#1a1a2e,#2a2a4a); border:1px solid rgba(255,255,255,0.1); border-radius:14px; display:flex; align-items:center; justify-content:center; margin-bottom:24px; font-size:22px; }
+    h1 { font-family:'Unbounded',sans-serif; font-size:22px; font-weight:700; letter-spacing:-0.5px; margin-bottom:6px; }
+    .subtitle { font-size:14px; color:var(--muted); margin-bottom:32px; line-height:1.5; }
 
-    h1 {
-      font-family: 'Unbounded', sans-serif;
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      color: var(--text);
-      margin-bottom: 6px;
-    }
-
-    .subtitle {
-      font-size: 14px;
-      color: var(--muted);
-      margin-bottom: 32px;
-      line-height: 1.5;
-    }
-
-    .divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-    .divider span {
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-    .divider::before, .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--card-border);
-    }
+    .divider { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .divider span { font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; }
+    .divider::before,.divider::after { content:''; flex:1; height:1px; background:var(--card-border); }
 
     .btn {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      width: 100%;
-      padding: 14px 18px;
-      margin-bottom: 10px;
-      border: 1px solid rgba(255,255,255,0.07);
-      border-radius: 12px;
-      font-family: 'Golos Text', sans-serif;
-      font-size: 15px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      text-decoration: none;
-      color: var(--text);
-      background: rgba(255,255,255,0.03);
-      position: relative;
-      overflow: hidden;
+      display:flex; align-items:center; gap:14px;
+      width:100%; padding:14px 18px; margin-bottom:10px;
+      border:1px solid rgba(255,255,255,0.07); border-radius:12px;
+      font-family:'Golos Text',sans-serif; font-size:15px; font-weight:500;
+      cursor:pointer; color:var(--text); background:rgba(255,255,255,0.03);
+      position:relative; overflow:hidden;
+      transition:all 0.2s cubic-bezier(0.4,0,0.2,1);
     }
+    .btn::after { content:''; position:absolute; inset:0; opacity:0; transition:opacity 0.2s; }
+    .btn:hover::after { opacity:1; }
+    .btn:hover { transform:translateY(-1px); border-color:rgba(255,255,255,0.12); }
+    .btn:active { transform:translateY(0) scale(0.99); }
+    .btn:disabled { pointer-events:none; opacity:0.6; }
 
-    .btn::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    .btn:hover::after { opacity: 1; }
-    .btn:hover { transform: translateY(-1px); border-color: rgba(255,255,255,0.12); }
-    .btn:active { transform: translateY(0) scale(0.99); }
+    .btn-vk::after  { background:linear-gradient(135deg,rgba(0,119,255,0.08),transparent); }
+    .btn-vk:hover   { box-shadow:0 4px 20px var(--vk-glow),0 0 0 1px rgba(0,119,255,0.2); border-color:rgba(0,119,255,0.3); }
+    .btn-ya::after  { background:linear-gradient(135deg,rgba(252,63,29,0.08),transparent); }
+    .btn-ya:hover   { box-shadow:0 4px 20px var(--ya-glow),0 0 0 1px rgba(252,63,29,0.2); border-color:rgba(252,63,29,0.3); }
+    .btn-mail::after{ background:linear-gradient(135deg,rgba(22,141,226,0.08),transparent); }
+    .btn-mail:hover { box-shadow:0 4px 20px var(--mail-glow),0 0 0 1px rgba(22,141,226,0.2); border-color:rgba(22,141,226,0.3); }
 
-    .btn-vk::after { background: linear-gradient(135deg, rgba(0,119,255,0.08), transparent); }
-    .btn-vk:hover { box-shadow: 0 4px 20px var(--vk-glow), 0 0 0 1px rgba(0,119,255,0.2); border-color: rgba(0,119,255,0.3); }
+    .btn-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; position:relative; z-index:1; }
+    .btn-icon svg { width:18px; height:18px; }
+    .btn-icon-vk   { background:var(--vk); }
+    .btn-icon-ya   { background:var(--ya); }
+    .btn-icon-mail { background:var(--mail); }
+    .btn-label { position:relative; z-index:1; flex:1; text-align:left; }
+    .btn-arrow { color:var(--muted); font-size:18px; position:relative; z-index:1; transition:transform 0.2s; }
+    .btn:hover .btn-arrow { transform:translateX(3px); color:var(--text); }
 
-    .btn-ya::after { background: linear-gradient(135deg, rgba(252,63,29,0.08), transparent); }
-    .btn-ya:hover { box-shadow: 0 4px 20px var(--ya-glow), 0 0 0 1px rgba(252,63,29,0.2); border-color: rgba(252,63,29,0.3); }
+    .spinner-inline { width:18px; height:18px; border:2px solid rgba(255,255,255,0.15); border-top-color:rgba(255,255,255,0.6); border-radius:50%; animation:spin 0.8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
 
-    .btn-mail::after { background: linear-gradient(135deg, rgba(22,141,226,0.08), transparent); }
-    .btn-mail:hover { box-shadow: 0 4px 20px var(--mail-glow), 0 0 0 1px rgba(22,141,226,0.2); border-color: rgba(22,141,226,0.3); }
+    /* User section */
+    #user-section { display:none; animation:cardIn 0.4s cubic-bezier(0.16,1,0.3,1) both; }
+    .avatar-wrap { display:flex; align-items:center; gap:16px; margin-bottom:28px; }
+    .avatar { width:60px; height:60px; border-radius:50%; object-fit:cover; border:2px solid rgba(255,255,255,0.1); background:#1e1e2e; }
+    .avatar-fallback { width:60px; height:60px; border-radius:50%; background:linear-gradient(135deg,#1a1a3a,#2a2a5a); border:2px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; font-family:'Unbounded',sans-serif; font-size:20px; font-weight:700; color:rgba(255,255,255,0.6); flex-shrink:0; }
+    .user-meta h2 { font-family:'Unbounded',sans-serif; font-size:16px; font-weight:600; margin-bottom:4px; }
+    .user-meta .email { font-size:13px; color:var(--muted); }
+    .badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:500; border:1px solid; margin-top:8px; }
+    .badge-vk    { color:var(--vk);  border-color:rgba(0,119,255,0.3);  background:rgba(0,119,255,0.1); }
+    .badge-yandex{ color:var(--ya);  border-color:rgba(252,63,29,0.3);  background:rgba(252,63,29,0.1); }
+    .badge-mailru{ color:var(--mail);border-color:rgba(22,141,226,0.3); background:rgba(22,141,226,0.1); }
 
-    .btn-icon {
-      width: 32px; height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      position: relative;
-      z-index: 1;
-    }
-    .btn-icon svg { width: 18px; height: 18px; }
-    .btn-icon-vk  { background: var(--vk); }
-    .btn-icon-ya  { background: var(--ya); }
-    .btn-icon-mail{ background: var(--mail); }
+    .info-block { background:rgba(255,255,255,0.03); border:1px solid var(--card-border); border-radius:12px; padding:16px; margin-bottom:20px; }
+    .info-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; font-size:14px; }
+    .info-row:not(:last-child) { border-bottom:1px solid var(--card-border); padding-bottom:10px; margin-bottom:4px; }
+    .info-label { color:var(--muted); font-size:12px; }
+    .info-val { color:var(--text); font-weight:500; word-break:break-all; text-align:right; max-width:60%; }
 
-    .btn-label { position: relative; z-index: 1; }
+    .success-badge { display:flex; align-items:center; gap:8px; padding:10px 14px; background:rgba(34,211,160,0.07); border:1px solid rgba(34,211,160,0.2); border-radius:10px; font-size:13px; color:var(--success); margin-bottom:20px; }
+    .success-dot { width:8px; height:8px; border-radius:50%; background:var(--success); box-shadow:0 0 8px var(--success); animation:pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-    .btn-arrow {
-      margin-left: auto;
-      color: var(--muted);
-      font-size: 18px;
-      position: relative;
-      z-index: 1;
-      transition: transform 0.2s;
-    }
-    .btn:hover .btn-arrow { transform: translateX(3px); color: var(--text); }
+    .btn-logout { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px; background:rgba(255,77,109,0.07); border:1px solid rgba(255,77,109,0.2); border-radius:12px; color:var(--error); font-family:'Golos Text',sans-serif; font-size:14px; font-weight:500; cursor:pointer; transition:all 0.2s; }
+    .btn-logout:hover { background:rgba(255,77,109,0.12); border-color:rgba(255,77,109,0.4); transform:translateY(-1px); }
 
-    /* Loading state */
-    .btn.loading { pointer-events: none; opacity: 0.7; }
-    .btn.loading .btn-arrow { animation: spin 1s linear infinite; display: inline-block; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1e1015; border:1px solid rgba(255,77,109,0.3); color:var(--error); padding:12px 20px; border-radius:10px; font-size:14px; font-weight:500; opacity:0; transition:all 0.3s cubic-bezier(0.16,1,0.3,1); z-index:100; max-width:340px; text-align:center; }
+    .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
-    /* ====== USER CARD ====== */
-    #user-section { display: none; animation: cardIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
-
-    .avatar-wrap {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-    .avatar {
-      width: 60px; height: 60px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 2px solid rgba(255,255,255,0.1);
-      background: #1e1e2e;
-    }
-    .avatar-fallback {
-      width: 60px; height: 60px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #1a1a3a, #2a2a5a);
-      border: 2px solid rgba(255,255,255,0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: 'Unbounded', sans-serif;
-      font-size: 20px;
-      font-weight: 700;
-      color: rgba(255,255,255,0.6);
-      flex-shrink: 0;
-    }
-
-    .user-meta h2 {
-      font-family: 'Unbounded', sans-serif;
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .user-meta .email { font-size: 13px; color: var(--muted); }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 500;
-      border: 1px solid;
-      margin-top: 8px;
-    }
-    .badge-vk   { color: var(--vk);  border-color: rgba(0,119,255,0.3);  background: rgba(0,119,255,0.1); }
-    .badge-yandex { color: var(--ya); border-color: rgba(252,63,29,0.3);  background: rgba(252,63,29,0.1); }
-    .badge-mailru { color: var(--mail); border-color: rgba(22,141,226,0.3); background: rgba(22,141,226,0.1); }
-
-    .info-block {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 20px;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 6px 0;
-      font-size: 14px;
-    }
-    .info-row:not(:last-child) { border-bottom: 1px solid var(--card-border); padding-bottom: 10px; margin-bottom: 4px; }
-    .info-label { color: var(--muted); font-size: 12px; }
-    .info-val { color: var(--text); font-weight: 500; word-break: break-all; text-align: right; max-width: 60%; }
-
-    .success-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      background: rgba(34,211,160,0.07);
-      border: 1px solid rgba(34,211,160,0.2);
-      border-radius: 10px;
-      font-size: 13px;
-      color: var(--success);
-      margin-bottom: 20px;
-    }
-    .success-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--success);
-      box-shadow: 0 0 8px var(--success);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    .btn-logout {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      padding: 13px;
-      background: rgba(255,77,109,0.07);
-      border: 1px solid rgba(255,77,109,0.2);
-      border-radius: 12px;
-      color: var(--error);
-      font-family: 'Golos Text', sans-serif;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-logout:hover { background: rgba(255,77,109,0.12); border-color: rgba(255,77,109,0.4); transform: translateY(-1px); }
-
-    /* Error toast */
-    .toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(80px);
-      background: #1e1015;
-      border: 1px solid rgba(255,77,109,0.3);
-      color: var(--error);
-      padding: 12px 20px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 500;
-      opacity: 0;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      z-index: 100;
-      max-width: 340px;
-      text-align: center;
-    }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    /* Loading screen */
-    #loading-screen {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 16px;
-    }
-    .spinner {
-      width: 36px; height: 36px;
-      border: 2px solid rgba(255,255,255,0.08);
-      border-top-color: rgba(255,255,255,0.4);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    .loading-text { font-size: 14px; color: var(--muted); }
+    #loading-screen { display:flex; flex-direction:column; align-items:center; gap:16px; }
+    .spinner { width:36px; height:36px; border:2px solid rgba(255,255,255,0.08); border-top-color:rgba(255,255,255,0.4); border-radius:50%; animation:spin 0.8s linear infinite; }
+    .loading-text { font-size:14px; color:var(--muted); }
   </style>
 </head>
 <body>
-  <div class="card">
-    <!-- Загрузка -->
-    <div id="loading-screen">
-      <div class="spinner"></div>
-      <div class="loading-text">Проверка сессии...</div>
-    </div>
-
-    <!-- Форма входа -->
-    <div id="login-section" style="display:none">
-      <div class="logo">🔐</div>
-      <h1>Единый вход</h1>
-      <p class="subtitle">Выберите удобный способ авторизации для входа в сервис</p>
-
-      <div class="divider"><span>Войти через</span></div>
-
-      <button class="btn btn-vk" id="btn-vk" onclick="login('vk')">
-        <span class="btn-icon btn-icon-vk">
-          <svg viewBox="0 0 24 24" fill="white"><path d="M21.579 6.855c.14-.465 0-.806-.662-.806h-2.193c-.558 0-.813.295-.953.619 0 0-1.115 2.719-2.695 4.482-.513.513-.745.675-1.024.675-.14 0-.343-.162-.343-.627V6.855c0-.558-.162-.806-.626-.806H9.642c-.348 0-.557.258-.557.504 0 .528.79.65.871 2.138v3.228c0 .707-.128.836-.406.836-.745 0-2.557-2.731-3.63-5.858C5.715 6.419 5.504 6.05 4.944 6.05H2.75C2.122 6.05 2 6.345 2 6.669c0 .582.745 3.473 3.473 7.299C7.297 16.588 9.909 18 12.279 18c1.442 0 1.62-.325 1.62-.882v-1.97c0-.628.132-.753.576-.753.326 0 .885.163 2.193 1.425 1.494 1.494 1.74 2.18 2.58 2.18h2.193c.627 0 .941-.325.76-.966-.198-.639-.91-1.568-1.86-2.669-.513-.605-1.282-1.257-1.515-1.583-.326-.42-.233-.605 0-.977 0 0 2.681-3.777 2.961-5.059.14-.465 0-.806-.662-.806"/></svg>
-        </span>
-        <span class="btn-label">Войти через VK ID</span>
-        <span class="btn-arrow">→</span>
-      </button>
-
-      <button class="btn btn-ya" id="btn-ya" onclick="login('yandex')">
-        <span class="btn-icon btn-icon-ya">
-          <svg viewBox="0 0 24 24" fill="white"><path d="M13.32 21h-2.495V13.51H9.21L5.88 21H3.15l3.555-7.88c-1.98-.84-3.03-2.505-3.03-4.74C3.675 5.085 5.88 3 9.45 3H13.32v18zm-2.495-9.495V5.01H9.36c-1.98 0-3.15 1.17-3.15 3.18 0 1.98 1.125 3.315 3.285 3.315h1.33z"/></svg>
-        </span>
-        <span class="btn-label">Войти через Яндекс</span>
-        <span class="btn-arrow">→</span>
-      </button>
-
-      <button class="btn btn-mail" id="btn-mail" onclick="login('mailru')">
-        <span class="btn-icon btn-icon-mail">
-          <svg viewBox="0 0 24 24" fill="white"><path d="M12 13.5L2 7V18h20V7l-10 6.5zM12 11L2 5h20l-10 6z"/></svg>
-        </span>
-        <span class="btn-label">Войти через Mail.ru</span>
-        <span class="btn-arrow">→</span>
-      </button>
-    </div>
-
-    <!-- Профиль пользователя -->
-    <div id="user-section">
-      <div class="avatar-wrap">
-        <div id="avatar-fallback" class="avatar-fallback">?</div>
-        <img id="avatar-img" class="avatar" style="display:none" alt="Avatar">
-        <div class="user-meta">
-          <h2 id="user-name">Пользователь</h2>
-          <div class="email" id="user-email">—</div>
-          <div id="provider-badge" class="badge"></div>
-        </div>
-      </div>
-
-      <div class="success-badge">
-        <div class="success-dot"></div>
-        Сессия активна
-      </div>
-
-      <div class="info-block">
-        <div class="info-row">
-          <span class="info-label">ID пользователя</span>
-          <span class="info-val" id="user-id">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Email</span>
-          <span class="info-val" id="user-email-detail">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Провайдер</span>
-          <span class="info-val" id="user-provider">—</span>
-        </div>
-      </div>
-
-      <button class="btn-logout" onclick="logout()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Выйти из аккаунта
-      </button>
-    </div>
+<div class="card">
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <div class="loading-text">Проверка сессии...</div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div id="login-section" style="display:none">
+    <div class="logo">🔐</div>
+    <h1>Единый вход</h1>
+    <p class="subtitle">Выберите удобный способ авторизации для входа в сервис</p>
+    <div class="divider"><span>Войти через</span></div>
 
-  <script>
-    const API_URL = '';
+    <button class="btn btn-vk" id="btn-vk" onclick="login('vk')">
+      <span class="btn-icon btn-icon-vk">
+        <svg viewBox="0 0 24 24" fill="white"><path d="M21.579 6.855c.14-.465 0-.806-.662-.806h-2.193c-.558 0-.813.295-.953.619 0 0-1.115 2.719-2.695 4.482-.513.513-.745.675-1.024.675-.14 0-.343-.162-.343-.627V6.855c0-.558-.162-.806-.626-.806H9.642c-.348 0-.557.258-.557.504 0 .528.79.65.871 2.138v3.228c0 .707-.128.836-.406.836-.745 0-2.557-2.731-3.63-5.858C5.715 6.419 5.504 6.05 4.944 6.05H2.75C2.122 6.05 2 6.345 2 6.669c0 .582.745 3.473 3.473 7.299C7.297 16.588 9.909 18 12.279 18c1.442 0 1.62-.325 1.62-.882v-1.97c0-.628.132-.753.576-.753.326 0 .885.163 2.193 1.425 1.494 1.494 1.74 2.18 2.58 2.18h2.193c.627 0 .941-.325.76-.966-.198-.639-.91-1.568-1.86-2.669-.513-.605-1.282-1.257-1.515-1.583-.326-.42-.233-.605 0-.977 0 0 2.681-3.777 2.961-5.059.14-.465 0-.806-.662-.806"/></svg>
+      </span>
+      <span class="btn-label">Войти через VK ID</span>
+      <span class="btn-arrow" id="arrow-vk">→</span>
+    </button>
 
-    const PROVIDER_LABELS = { vk: 'VK ID', yandex: 'Яндекс ID', mailru: 'Mail.ru' };
-    const ERROR_LABELS = {
-      vk_auth_failed: 'Ошибка авторизации через VK',
-      yandex_auth_failed: 'Ошибка авторизации через Яндекс',
-      mailru_auth_failed: 'Ошибка авторизации через Mail.ru',
-      invalid_code: 'Недействительный код авторизации',
-      invalid_state: 'Ошибка безопасности — попробуйте снова',
-    };
+    <button class="btn btn-ya" id="btn-ya" onclick="login('yandex')">
+      <span class="btn-icon btn-icon-ya">
+        <svg viewBox="0 0 24 24" fill="white"><path d="M13.32 21h-2.495V13.51H9.21L5.88 21H3.15l3.555-7.88c-1.98-.84-3.03-2.505-3.03-4.74C3.675 5.085 5.88 3 9.45 3H13.32v18zm-2.495-9.495V5.01H9.36c-1.98 0-3.15 1.17-3.15 3.18 0 1.98 1.125 3.315 3.285 3.315h1.33z"/></svg>
+      </span>
+      <span class="btn-label">Войти через Яндекс</span>
+      <span class="btn-arrow" id="arrow-ya">→</span>
+    </button>
 
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.textContent = msg;
-      t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 4000);
-    }
+    <button class="btn btn-mail" id="btn-mail" onclick="login('mailru')">
+      <span class="btn-icon btn-icon-mail">
+        <svg viewBox="0 0 24 24" fill="white"><path d="M12 13.5L2 7V18h20V7l-10 6.5zM12 11L2 5h20l-10 6z"/></svg>
+      </span>
+      <span class="btn-label">Войти через Mail.ru</span>
+      <span class="btn-arrow" id="arrow-mail">→</span>
+    </button>
+  </div>
 
-    function show(id) {
-      ['loading-screen', 'login-section', 'user-section'].forEach(s => {
-        document.getElementById(s).style.display = s === id ? '' : 'none';
-      });
-    }
+  <div id="user-section">
+    <div class="avatar-wrap">
+      <div id="avatar-fallback" class="avatar-fallback">?</div>
+      <img id="avatar-img" class="avatar" style="display:none" alt="Avatar">
+      <div class="user-meta">
+        <h2 id="user-name">Пользователь</h2>
+        <div class="email" id="user-email">—</div>
+        <div id="provider-badge" class="badge"></div>
+      </div>
+    </div>
+    <div class="success-badge"><div class="success-dot"></div>Сессия активна</div>
+    <div class="info-block">
+      <div class="info-row"><span class="info-label">ID пользователя</span><span class="info-val" id="user-id">—</span></div>
+      <div class="info-row"><span class="info-label">Email</span><span class="info-val" id="user-email-detail">—</span></div>
+      <div class="info-row"><span class="info-label">Провайдер</span><span class="info-val" id="user-provider">—</span></div>
+    </div>
+    <button class="btn-logout" onclick="logout()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Выйти из аккаунта
+    </button>
+  </div>
+</div>
 
-    function setButtonLoading(id, loading) {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-      if (loading) {
-        btn.classList.add('loading');
-        btn.querySelector('.btn-arrow').textContent = '◌';
-      } else {
-        btn.classList.remove('loading');
-        btn.querySelector('.btn-arrow').textContent = '→';
-      }
-    }
+<div class="toast" id="toast"></div>
 
-    async function login(provider) {
-      const btnId = `btn-${provider === 'yandex' ? 'ya' : provider === 'mailru' ? 'mail' : 'vk'}`;
-      setButtonLoading(btnId, true);
+<script>
+  const PROVIDER_LABELS = { vk:'VK ID', yandex:'Яндекс ID', mailru:'Mail.ru' };
+  const ERROR_LABELS = {
+    vk_auth_failed:'Ошибка авторизации через VK',
+    yandex_auth_failed:'Ошибка авторизации через Яндекс',
+    mailru_auth_failed:'Ошибка авторизации через Mail.ru',
+    invalid_code:'Недействительный код авторизации',
+    invalid_state:'Ошибка безопасности — попробуйте снова',
+  };
 
-      // Подсветка фона
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 4000);
+  }
+
+  function show(id) {
+    ['loading-screen','login-section','user-section'].forEach(s => {
+      document.getElementById(s).style.display = s === id ? '' : 'none';
+    });
+  }
+
+  const providerMap = { vk:'vk', yandex:'ya', mailru:'mail' };
+
+  function setLoading(provider, on) {
+    const key = providerMap[provider];
+    const btn = document.getElementById(`btn-${key}`);
+    const arrow = document.getElementById(`arrow-${key}`);
+    if (!btn) return;
+    btn.disabled = on;
+    if (on) {
+      arrow.innerHTML = '<div class="spinner-inline"></div>';
       document.body.className = provider === 'yandex' ? 'glow-ya' : provider === 'mailru' ? 'glow-mail' : '';
+    } else {
+      arrow.textContent = '→';
+      document.body.className = '';
+    }
+  }
 
-      try {
-        const res = await fetch(`${API_URL}/auth/${provider}`, { credentials: 'include' });
-        const data = await res.json();
-        window.location.href = data.authUrl;
-      } catch (err) {
-        setButtonLoading(btnId, false);
-        document.body.className = '';
+  async function login(provider) {
+    setLoading(provider, true);
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 20000); // 20с таймаут
+      const res = await fetch(`/auth/${provider}`, { credentials:'include', signal:ctrl.signal });
+      clearTimeout(tid);
+      if (!res.ok) throw new Error('Server error');
+      const data = await res.json();
+      window.location.href = data.authUrl;
+    } catch (err) {
+      setLoading(provider, false);
+      if (err.name === 'AbortError') {
+        showToast('Сервер не отвечает. Попробуйте снова через 10 секунд.');
+      } else {
         showToast('Ошибка соединения с сервером');
       }
     }
+  }
 
-    function renderUser(user) {
-      const name = user.name || user.userId.split('_').slice(1).join('_') || user.userId;
-      const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+  function renderUser(user) {
+    const name = user.name || user.userId;
+    const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2) || '?';
+    document.getElementById('user-name').textContent = name;
+    document.getElementById('user-email').textContent = user.email || 'Email не указан';
+    document.getElementById('user-id').textContent = user.userId;
+    document.getElementById('user-email-detail').textContent = user.email || '—';
+    document.getElementById('user-provider').textContent = PROVIDER_LABELS[user.provider] || user.provider;
+    document.getElementById('avatar-fallback').textContent = initials;
+    if (user.avatar) {
+      const img = document.getElementById('avatar-img');
+      img.onload = () => { document.getElementById('avatar-fallback').style.display='none'; img.style.display=''; };
+      img.src = user.avatar;
+    }
+    const badge = document.getElementById('provider-badge');
+    badge.textContent = PROVIDER_LABELS[user.provider] || user.provider;
+    badge.className = `badge badge-${user.provider}`;
+    document.body.className = user.provider==='yandex' ? 'glow-ya' : user.provider==='mailru' ? 'glow-mail' : '';
+    show('user-section');
+  }
 
-      document.getElementById('user-name').textContent = name;
-      document.getElementById('user-email').textContent = user.email || 'Email не указан';
-      document.getElementById('user-id').textContent = user.userId;
-      document.getElementById('user-email-detail').textContent = user.email || '—';
-      document.getElementById('user-provider').textContent = PROVIDER_LABELS[user.provider] || user.provider;
-      document.getElementById('avatar-fallback').textContent = initials;
+  async function fetchMe(token) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch('/auth/me', { headers:{ Authorization:`Bearer ${token}` }, signal:ctrl.signal });
+      clearTimeout(tid);
+      return res.ok ? res.json() : null;
+    } catch { return null; }
+  }
 
-      // Аватарка
-      if (user.avatar) {
-        const img = document.getElementById('avatar-img');
-        img.onload = () => {
-          document.getElementById('avatar-fallback').style.display = 'none';
-          img.style.display = '';
-        };
-        img.onerror = () => { img.style.display = 'none'; };
-        img.src = user.avatar;
+  async function checkAuth() {
+    const token = localStorage.getItem('accessToken');
+    if (!token) { show('login-section'); return; }
+    const user = await fetchMe(token);
+    if (user) { renderUser(user); return; }
+    // пробуем refresh
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 8000);
+      const r = await fetch('/auth/refresh', { method:'POST', credentials:'include', signal:ctrl.signal });
+      if (r.ok) {
+        const d = await r.json();
+        localStorage.setItem('accessToken', d.accessToken);
+        const u = await fetchMe(d.accessToken);
+        if (u) { renderUser(u); return; }
       }
-
-      // Бейдж провайдера
-      const badge = document.getElementById('provider-badge');
-      badge.textContent = PROVIDER_LABELS[user.provider] || user.provider;
-      badge.className = `badge badge-${user.provider}`;
-
-      // Подсветка фона
-      document.body.className = user.provider === 'yandex' ? 'glow-ya' : user.provider === 'mailru' ? 'glow-mail' : '';
-
-      show('user-section');
-    }
-
-    async function checkAuth() {
-  const token = localStorage.getItem('accessToken');
-  if (!token) { show('login-section'); return; }
-
-  try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(`${API_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal
-    });
-    clearTimeout(tid);
-
-    if (res.ok) {
-      renderUser(await res.json());
-    } else if (res.status === 401) {
-      await tryRefresh();
-    } else {
-      localStorage.removeItem('accessToken');
-      show('login-section');
-    }
-  } catch {
+    } catch {}
     localStorage.removeItem('accessToken');
     show('login-section');
   }
-}
 
-    async function tryRefresh() {
-      try {
-        const res = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
-        if (res.ok) {
-          const data = await res.json();
-          localStorage.setItem('accessToken', data.accessToken);
-          const me = await fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${data.accessToken}` } });
-          if (me.ok) { renderUser(await me.json()); return; }
-        }
-      } catch {}
-      localStorage.removeItem('accessToken');
-      show('login-section');
+  async function logout() {
+    const token = localStorage.getItem('accessToken');
+    try {
+      await fetch('/auth/logout', { method:'POST', credentials:'include', headers: token ? { Authorization:`Bearer ${token}` } : {} });
+    } catch {}
+    localStorage.removeItem('accessToken');
+    document.body.className = '';
+    show('login-section');
+  }
+
+  window.onload = function() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const error = params.get('error');
+    window.history.replaceState({}, '', window.location.pathname);
+
+    if (token) {
+      localStorage.setItem('accessToken', token);
+      fetchMe(token).then(u => { if (u) renderUser(u); else show('login-section'); });
+    } else {
+      if (error) showToast(ERROR_LABELS[error] || `Ошибка: ${error}`);
+      checkAuth();
     }
-
-    async function logout() {
-      const token = localStorage.getItem('accessToken');
-      try {
-        await fetch(`${API_URL}/auth/logout`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: token ? { Authorization: `Bearer ${token}` } : {}
-        });
-      } catch {}
-      localStorage.removeItem('accessToken');
-      document.body.className = '';
-      show('login-section');
-    }
-
-    // ====== ИНИЦИАЛИЗАЦИЯ ======
-    window.onload = function() {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
-      const error = params.get('error');
-      window.history.replaceState({}, '', window.location.pathname);
-
-      if (token) {
-        localStorage.setItem('accessToken', token);
-        // Сразу получаем инфо о юзере
-        fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-          .then(r => r.ok ? r.json() : null)
-          .then(user => { if (user) renderUser(user); else show('login-section'); })
-          .catch(() => show('login-section'));
-      } else {
-        if (error) showToast(ERROR_LABELS[error] || `Ошибка: ${error}`);
-        checkAuth();
-      }
-    };
-  </script>
+  };
+</script>
 </body>
 </html>
