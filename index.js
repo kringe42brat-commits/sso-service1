@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/index.js << 'EOF'
 const express = require('express');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
@@ -361,5 +360,3 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 Yandex callback: ${process.env.YANDEX_REDIRECT_URI}`);
   console.log(`📡 Mail.ru callback: ${process.env.MAILRU_REDIRECT_URI}`);
 });
-EOF
-echo "Done"
