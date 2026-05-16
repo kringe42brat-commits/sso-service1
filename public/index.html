@@ -6,23 +6,88 @@
   <title>Единый вход</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- Нет inline JS, нет onclick — весь JS в app.js -->
   <style>
     :root {
-      --bg:#0c0c0f; --card:#13131a; --border:rgba(255,255,255,0.06);
-      --text:#f0f0f5; --muted:#7a7a9a;
-      --vk:#0077FF; --vk-glow:rgba(0,119,255,0.25);
-      --ya:#FC3F1D;  --ya-glow:rgba(252,63,29,0.25);
-      --mail:#168DE2;--mail-glow:rgba(22,141,226,0.25);
-      --ok:#22d3a0;  --err:#ff4d6d; --r:18px;
+      --bg:#0c0c0f; --card:#13131a; --border:rgba(255,255,255,.06);
+      --text:#f0f0f5; --muted:#7a7a9a; --muted2:#4a4a6a;
+      --vk:#0077FF; --ya:#FC3F1D; --mail:#168DE2;
+      --ok:#22d3a0; --err:#ff4d6d; --r:18px;
     }
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Golos Text',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;pointer-events:none}
-    body::after{content:'';position:fixed;width:600px;height:600px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(0,119,255,.08) 0%,transparent 65%);pointer-events:none;transition:background .6s}
-    body.glow-ya::after{background:radial-gradient(circle,rgba(252,63,29,.08) 0%,transparent 65%)}
-    body.glow-mail::after{background:radial-gradient(circle,rgba(22,141,226,.08) 0%,transparent 65%)}
 
+    /* Сетка */
+    body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;pointer-events:none;z-index:0}
+    /* Свет */
+    body::after{content:'';position:fixed;width:700px;height:700px;top:50%;left:50%;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(0,119,255,.07) 0%,transparent 65%);pointer-events:none;transition:background .8s;z-index:0}
+    body.glow-ya::after{background:radial-gradient(circle,rgba(252,63,29,.07) 0%,transparent 65%)}
+    body.glow-mail::after{background:radial-gradient(circle,rgba(22,141,226,.07) 0%,transparent 65%)}
+
+    /* ─── SIDEBAR ─────────────────────────────────────────────────────────── */
+    #sidebar-panel {
+      position:fixed; left:24px; top:50%; transform:translateY(-50%);
+      width:200px; z-index:10;
+      background:rgba(19,19,26,.8); backdrop-filter:blur(16px);
+      border:1px solid var(--border); border-radius:16px;
+      padding:16px; display:flex; flex-direction:column; gap:12px;
+      animation:slideIn .5s cubic-bezier(.16,1,.3,1) .2s both;
+    }
+    @keyframes slideIn{from{opacity:0;transform:translateY(-50%) translateX(-20px)}to{opacity:1;transform:translateY(-50%) translateX(0)}}
+
+    .sb-header{display:flex;justify-content:space-between;align-items:center}
+    .sb-title{font-family:'Unbounded',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+    .sb-hint{font-size:10px;color:var(--muted2);font-family:monospace;background:rgba(255,255,255,.05);padding:2px 6px;border-radius:4px;letter-spacing:.1em}
+
+    .sb-list{display:flex;flex-direction:column;gap:6px}
+    .sb-item{display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:10px;border:1px solid transparent;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+    .sb-item::before{content:'';position:absolute;inset:0;opacity:0;transition:opacity .2s;border-radius:10px}
+    .sb-item:hover::before{opacity:1}
+    .sb-item:hover{border-color:rgba(255,255,255,.08);transform:translateX(3px)}
+    .sb-item[data-provider="vk"]:hover::before{background:rgba(0,119,255,.08)}
+    .sb-item[data-provider="yandex"]:hover::before{background:rgba(252,63,29,.08)}
+    .sb-item[data-provider="mailru"]:hover::before{background:rgba(22,141,226,.08)}
+    .sb-item.connected{background:rgba(255,255,255,.03)}
+
+    .sb-icon{width:28px;height:28px;border-radius:7px;background:var(--c,#333);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;z-index:1}
+    .sb-icon svg{width:14px;height:14px;color:#fff}
+    .sb-dot{position:absolute;bottom:-2px;right:-2px;width:8px;height:8px;background:var(--ok);border:2px solid var(--bg);border-radius:50%;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,211,160,.4)}50%{box-shadow:0 0 0 4px rgba(34,211,160,0)}}
+
+    .sb-info{flex:1;min-width:0;position:relative;z-index:1}
+    .sb-name{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sb-time{font-size:10px;color:var(--ok);margin-top:1px}
+    .sb-login-hint{font-size:10px;color:var(--muted2);margin-top:1px}
+
+    .sb-avatar{width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid rgba(255,255,255,.1);position:relative;z-index:1}
+    .sb-avatar-initial{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;width:24px;height:24px;border-radius:50%;flex-shrink:0}
+    .sb-connect-btn{font-size:14px;color:var(--muted2);position:relative;z-index:1;transition:transform .2s}
+    .sb-item:hover .sb-connect-btn{transform:translateX(3px);color:var(--text)}
+
+    .sb-footer{border-top:1px solid var(--border);padding-top:10px}
+    .sb-footer-text{font-size:10px;color:var(--muted);margin-bottom:6px}
+    .sb-bar{display:flex;gap:3px}
+    .sb-bar-seg{flex:1;height:3px;border-radius:2px;background:var(--border);transition:background .4s}
+    .sb-bar-seg.active{background:var(--c)}
+
+    /* ─── BOTTOM-RIGHT WIDGET ────────────────────────────────────────────── */
+    #update-widget {
+      position:fixed; right:24px; bottom:24px; z-index:10;
+      background:rgba(19,19,26,.85); backdrop-filter:blur(16px);
+      border:1px solid var(--border); border-radius:12px;
+      padding:10px 16px; display:flex; align-items:center; gap:10px;
+      font-size:12px; animation:fadeUp .5s cubic-bezier(.16,1,.3,1) .4s both;
+      min-width:180px;
+    }
+    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+    .upd-clock{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;letter-spacing:.02em}
+    .upd-sec{color:var(--muted);font-size:11px}
+    .upd-sep{color:var(--muted2)}
+    .upd-info{display:flex;flex-direction:column;gap:1px;min-width:0}
+    .upd-label{font-size:11px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .upd-time{font-size:10px;color:var(--ok)}
+
+    /* ─── MAIN CARD ───────────────────────────────────────────────────────── */
     .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);width:100%;max-width:420px;padding:40px;position:relative;z-index:1;animation:cardIn .5s cubic-bezier(.16,1,.3,1) both}
     @keyframes cardIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
     .card::before{content:'';position:absolute;top:0;left:20%;right:20%;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent)}
@@ -42,25 +107,33 @@
     .btn:active{transform:scale(.99)}
     .btn:disabled{pointer-events:none;opacity:.6}
     .btn-vk::after{background:linear-gradient(135deg,rgba(0,119,255,.08),transparent)}
-    .btn-vk:hover{box-shadow:0 4px 20px var(--vk-glow),0 0 0 1px rgba(0,119,255,.2);border-color:rgba(0,119,255,.3)}
+    .btn-vk:hover{box-shadow:0 4px 20px rgba(0,119,255,.2),0 0 0 1px rgba(0,119,255,.2);border-color:rgba(0,119,255,.3)}
     .btn-ya::after{background:linear-gradient(135deg,rgba(252,63,29,.08),transparent)}
-    .btn-ya:hover{box-shadow:0 4px 20px var(--ya-glow),0 0 0 1px rgba(252,63,29,.2);border-color:rgba(252,63,29,.3)}
+    .btn-ya:hover{box-shadow:0 4px 20px rgba(252,63,29,.2),0 0 0 1px rgba(252,63,29,.2);border-color:rgba(252,63,29,.3)}
     .btn-mail::after{background:linear-gradient(135deg,rgba(22,141,226,.08),transparent)}
-    .btn-mail:hover{box-shadow:0 4px 20px var(--mail-glow),0 0 0 1px rgba(22,141,226,.2);border-color:rgba(22,141,226,.3)}
-
+    .btn-mail:hover{box-shadow:0 4px 20px rgba(22,141,226,.2),0 0 0 1px rgba(22,141,226,.2);border-color:rgba(22,141,226,.3)}
     .btn-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;z-index:1}
     .btn-icon svg{width:18px;height:18px}
     .btn-icon-vk{background:var(--vk)} .btn-icon-ya{background:var(--ya)} .btn-icon-mail{background:var(--mail)}
     .btn-label{position:relative;z-index:1;flex:1;text-align:left}
     .btn-arrow{color:var(--muted);font-size:18px;position:relative;z-index:1;transition:transform .2s;min-width:20px;display:flex;align-items:center;justify-content:center}
     .btn:hover .btn-arrow{transform:translateX(3px);color:var(--text)}
+
+    /* Подсветка кнопки при нажатии клавиши */
+    .highlight-pulse{animation:hpulse .6s ease!important}
+    @keyframes hpulse{0%,100%{transform:none}50%{transform:translateY(-2px) scale(1.02);box-shadow:0 8px 30px rgba(255,255,255,.15)}}
+
     .spinner-inline{width:16px;height:16px;border:2px solid rgba(255,255,255,.15);border-top-color:rgba(255,255,255,.7);border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    /* User section */
+    /* Keyboard shortcuts подсказка */
+    .kb-hint{display:flex;gap:8px;justify-content:center;margin-top:16px;opacity:.4}
+    .kb-key{font-size:10px;font-family:monospace;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:4px;padding:2px 6px;color:var(--muted)}
+
+    /* ─── USER SECTION ────────────────────────────────────────────────────── */
     #user-section{display:none;animation:cardIn .4s cubic-bezier(.16,1,.3,1) both}
-    .avatar-wrap{display:flex;align-items:center;gap:16px;margin-bottom:28px}
-    .avatar{width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.1);background:#1e1e2e}
+    .avatar-wrap{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+    .avatar{width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,.1);background:#1e1e2e;display:none}
     .avatar-fallback{width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#1a1a3a,#2a2a5a);border:2px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-family:'Unbounded',sans-serif;font-size:20px;font-weight:700;color:rgba(255,255,255,.6);flex-shrink:0}
     .user-meta h2{font-family:'Unbounded',sans-serif;font-size:16px;font-weight:600;margin-bottom:4px}
     .user-meta .email{font-size:13px;color:var(--muted)}
@@ -68,37 +141,58 @@
     .badge-vk{color:var(--vk);border-color:rgba(0,119,255,.3);background:rgba(0,119,255,.1)}
     .badge-yandex{color:var(--ya);border-color:rgba(252,63,29,.3);background:rgba(252,63,29,.1)}
     .badge-mailru{color:var(--mail);border-color:rgba(22,141,226,.3);background:rgba(22,141,226,.1)}
+
+    /* Session timer */
+    .session-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding:10px 14px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:10px}
+    .session-left{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ok)}
+    .session-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 2s infinite}
+    .session-label{font-size:13px;color:var(--ok)}
+    .session-timer-wrap{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+    #session-countdown{font-family:'Unbounded',sans-serif;font-size:13px;font-weight:600;transition:color .5s}
+
     .info-block{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px}
     .info-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:14px}
     .info-row:not(:last-child){border-bottom:1px solid var(--border);padding-bottom:10px;margin-bottom:4px}
     .info-label{color:var(--muted);font-size:12px}
     .info-val{color:var(--text);font-weight:500;word-break:break-all;text-align:right;max-width:60%}
-    .success-badge{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(34,211,160,.07);border:1px solid rgba(34,211,160,.2);border-radius:10px;font-size:13px;color:var(--ok);margin-bottom:20px}
-    .success-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pulse 2s infinite}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
     .btn-logout{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;background:rgba(255,77,109,.07);border:1px solid rgba(255,77,109,.2);border-radius:12px;color:var(--err);font-family:'Golos Text',sans-serif;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s}
     .btn-logout:hover{background:rgba(255,77,109,.12);border-color:rgba(255,77,109,.4);transform:translateY(-1px)}
 
-    /* Loading */
+    /* ─── LOADING ─────────────────────────────────────────────────────────── */
     #loading-screen{display:flex;flex-direction:column;align-items:center;gap:16px}
     .spinner{width:36px;height:36px;border:2px solid rgba(255,255,255,.08);border-top-color:rgba(255,255,255,.4);border-radius:50%;animation:spin .8s linear infinite}
     .loading-text{font-size:14px;color:var(--muted)}
 
-    /* Toast */
-    .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#1e1015;border:1px solid rgba(255,77,109,.3);color:var(--err);padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;transition:all .3s cubic-bezier(.16,1,.3,1);z-index:100;max-width:340px;text-align:center}
+    /* ─── TOAST ───────────────────────────────────────────────────────────── */
+    .toast{position:fixed;bottom:76px;left:50%;transform:translateX(-50%) translateY(40px);background:#1e1015;border:1px solid rgba(255,77,109,.3);color:var(--err);padding:12px 20px;border-radius:10px;font-size:14px;font-weight:500;opacity:0;transition:all .3s cubic-bezier(.16,1,.3,1);z-index:100;max-width:340px;text-align:center;pointer-events:none}
     .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
     .toast.toast-ok{background:#0e1e18;border-color:rgba(34,211,160,.3);color:var(--ok)}
+
+    /* ─── SPARKLE ─────────────────────────────────────────────────────────── */
+    .sparkle-dot{position:fixed;width:6px;height:6px;border-radius:50%;pointer-events:none;z-index:999;animation:sparkleAnim .8s ease-out forwards}
+    @keyframes sparkleAnim{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) scale(0);opacity:0}}
+
+    /* ─── RESPONSIVE ──────────────────────────────────────────────────────── */
+    @media(max-width:800px){
+      #sidebar-panel{display:none}
+      #update-widget{right:12px;bottom:12px;padding:8px 12px;min-width:auto}
+      .upd-info{display:none}
+      .upd-sep{display:none}
+    }
   </style>
 </head>
 <body>
+
+<!-- LEFT SIDEBAR -->
+<div id="sidebar-panel"></div>
+
+<!-- MAIN CARD -->
 <div class="card">
-  <!-- Загрузка -->
   <div id="loading-screen">
     <div class="spinner"></div>
     <div class="loading-text">Проверка сессии...</div>
   </div>
 
-  <!-- Форма входа — нет onclick атрибутов -->
   <div id="login-section" style="display:none">
     <div class="logo">🔐</div>
     <h1>Единый вход</h1>
@@ -107,7 +201,7 @@
 
     <button class="btn btn-vk" id="btn-vk">
       <span class="btn-icon btn-icon-vk">
-        <svg viewBox="0 0 24 24" fill="white"><path d="M21.579 6.855c.14-.465 0-.806-.662-.806h-2.193c-.558 0-.813.295-.953.619 0 0-1.115 2.719-2.695 4.482-.513.513-.745.675-1.024.675-.14 0-.343-.162-.343-.627V6.855c0-.558-.162-.806-.626-.806H9.642c-.348 0-.557.258-.557.504 0 .528.79.65.871 2.138v3.228c0 .707-.128.836-.406.836-.745 0-2.557-2.731-3.63-5.858C5.715 6.419 5.504 6.05 4.944 6.05H2.75C2.122 6.05 2 6.345 2 6.669c0 .582.745 3.473 3.473 7.299C7.297 16.588 9.909 18 12.279 18c1.442 0 1.62-.325 1.62-.882v-1.97c0-.628.132-.753.576-.753.326 0 .885.163 2.193 1.425 1.494 1.494 1.74 2.18 2.58 2.18h2.193c.627 0 .941-.325.76-.966-.198-.639-.91-1.568-1.86-2.669-.513-.605-1.282-1.257-1.515-1.583-.326-.42-.233-.605 0-.977 0 0 2.681-3.777 2.961-5.059.14-.465 0-.806-.662-.806"/></svg>
+        <svg viewBox="0 0 24 24" fill="white"><path d="M21.579 6.855c.14-.465 0-.806-.662-.806h-2.193c-.558 0-.813.295-.953.619 0 0-1.115 2.719-2.695 4.482-.513.513-.745.675-1.024.675-.14 0-.343-.162-.343-.627V6.855c0-.558-.162-.806-.626-.806H9.642c-.348 0-.557.258-.557.504 0 .528.79.65.871 2.138v3.228c0 .707-.128.836-.406.836-.745 0-2.557-2.731-3.63-5.858C5.715 6.419 5.504 6.05 4.944 6.05H2.75C2.122 6.05 2 6.345 2 6.669c0 .582.745 3.473 3.473 7.299C7.297 16.588 9.909 18 12.279 18c1.442 0 1.62-.325 1.62-.882v-1.97c0-.628.132-.753.576-.753.326 0 .885.163 2.193 1.425 1.494 1.494 1.74 2.18 2.58 2.18h2.193c.627 0 .941-.325.76-.966-.198-.639-.91-1.568-1.86-2.669-.513-.605-1.282-1.257-1.515-1.583-.326-.42-.233-.605 0-.977 0 0 2.681-3.777 2.961-5.059z"/></svg>
       </span>
       <span class="btn-label">Войти через VK ID</span>
       <span class="btn-arrow" id="arrow-vk">→</span>
@@ -128,25 +222,44 @@
       <span class="btn-label">Войти через Mail.ru</span>
       <span class="btn-arrow" id="arrow-mail">→</span>
     </button>
+
+    <!-- Keyboard hints -->
+    <div class="kb-hint">
+      <span class="kb-key">1</span><span style="font-size:10px;color:var(--muted2)">VK</span>
+      <span class="kb-key">2</span><span style="font-size:10px;color:var(--muted2)">Яндекс</span>
+      <span class="kb-key">3</span><span style="font-size:10px;color:var(--muted2)">Mail</span>
+    </div>
   </div>
 
-  <!-- Профиль -->
   <div id="user-section">
     <div class="avatar-wrap">
       <div id="avatar-fallback" class="avatar-fallback">?</div>
-      <img id="avatar-img" class="avatar" style="display:none" alt="Avatar">
+      <img id="avatar-img" class="avatar" alt="Avatar">
       <div class="user-meta">
         <h2 id="user-name">Пользователь</h2>
         <div class="email" id="user-email">—</div>
         <div id="provider-badge" class="badge"></div>
       </div>
     </div>
-    <div class="success-badge"><div class="success-dot"></div>Сессия активна</div>
+
+    <!-- Session timer -->
+    <div class="session-row">
+      <div class="session-left">
+        <div class="session-dot"></div>
+        <span class="session-label">Сессия активна</span>
+      </div>
+      <div class="session-timer-wrap">
+        <span>обновление через</span>
+        <span id="session-countdown">15:00</span>
+      </div>
+    </div>
+
     <div class="info-block">
       <div class="info-row"><span class="info-label">ID пользователя</span><span class="info-val" id="user-id">—</span></div>
       <div class="info-row"><span class="info-label">Email</span><span class="info-val" id="user-email-detail">—</span></div>
       <div class="info-row"><span class="info-label">Провайдер</span><span class="info-val" id="user-provider">—</span></div>
     </div>
+
     <button class="btn-logout" id="btn-logout">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -157,9 +270,12 @@
   </div>
 </div>
 
+<!-- BOTTOM-RIGHT WIDGET -->
+<div id="update-widget"></div>
+
+<!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<!-- Весь JS вынесен в отдельный файл — CSP script-src 'self' работает -->
 <script src="app.js"></script>
 </body>
 </html>
