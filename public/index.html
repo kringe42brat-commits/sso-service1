@@ -47,6 +47,13 @@
     .sb-item[data-provider="yandex"]:hover::before{background:rgba(252,63,29,.08)}
     .sb-item[data-provider="mailru"]:hover::before{background:rgba(22,141,226,.08)}
     .sb-item.connected{background:rgba(255,255,255,.03)}
+    
+    /* Активный элемент в сайдбаре */
+    .sb-item.active {
+      border-color: var(--c, #fff);
+      box-shadow: 0 0 12px rgba(var(--c, 255, 255, 255), 0.2);
+      background: rgba(var(--c, 255, 255, 255), 0.05);
+    }
 
     .sb-icon{width:28px;height:28px;border-radius:7px;background:var(--c,#333);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;z-index:1}
     .sb-icon svg{width:14px;height:14px;color:#fff}
@@ -159,7 +166,7 @@
     .btn-logout:hover{background:rgba(255,77,109,.12);border-color:rgba(255,77,109,.4);transform:translateY(-1px)}
 
     /* ─── LOADING ─────────────────────────────────────────────────────────── */
-    #loading-screen{display:flex;flex-direction:column;align-items:center;gap:16px}
+    #loading-screen{display:none;flex-direction:column;align-items:center;gap:16px}
     .spinner{width:36px;height:36px;border:2px solid rgba(255,255,255,.08);border-top-color:rgba(255,255,255,.4);border-radius:50%;animation:spin .8s linear infinite}
     .loading-text{font-size:14px;color:var(--muted)}
 

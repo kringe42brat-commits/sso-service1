@@ -11,6 +11,7 @@ const ERROR_LABELS = {
 
 // ── IN-MEMORY TOKEN ──────────────────────────────────────────────────────────
 let _token=null, _issuedAt=null;
+let activeProvider = null; // Текущий активный провайдер (с токеном)
 const TOKEN_TTL=15*60;
 const getToken  = ()  => _token;
 const setToken  = t   => { _token=t; _issuedAt=Date.now(); };
@@ -38,12 +39,10 @@ async function apiFetch(url, opts={}, ms=15000) {
 // ── UI ────────────────────────────────────────────────────────────────────────
 function show(id) {
   // Скрываем все и показываем только нужный блок с правильным display
-  ['loading-screen', 'login-section', 'user-section'].forEach(s => {
+  ['loading-screen','login-section','user-section'].forEach(s => {
     const el = document.getElementById(s);
     if (!el) return;
-
     if (s === id) {
-      // Устанавливаем нужный display в зависимости от блока
       if (s === 'loading-screen') {
         el.style.display = 'flex';   // loading-screen использует flex
       } else {
@@ -54,6 +53,23 @@ function show(id) {
     }
   });
 }
+
+function setLoadingMsg(msg) { const e=document.getElementById('loading-text'); if(e) e.textContent=msg; }
+function showToast(msg, ok=false) {
+  const t=document.getElementById('toast');
+  if (!t) return;
+  t.textContent=msg; t.className=`toast show${ok?' toast-ok':''}`;
+  setTimeout(()=>t.classList.remove('show'), 5000);
+}
+const PM={vk:'vk',yandex:'ya',mailru:'mail'};
+function setButtonLoading(p, on) {
+  const btn=document.getElementById(`btn-${PM[p]}`), arrow=document.getElementById(`arrow-${PM[p]}`);
+  if (!btn) return;
+  btn.disabled=on;
+  arrow.innerHTML=on?'<span class="spinner-inline"></span>':'→';
+  if (on) document.body.className=p==='yandex'?'glow-ya':p==='mailru'?'glow-mail':'';
+}
+
 // ── SPARKLE ───────────────────────────────────────────────────────────────────
 function sparkle(x,y) {
   for (let i=0;i<14;i++){
@@ -101,12 +117,14 @@ async function tryRefresh() {
 async function logout() {
   try { await apiFetch('/auth/logout',{method:'POST'},8000); } catch{}
   clearToken(); stopCountdown(); document.body.className='';
+  activeProvider = null; // <-- Очищаем активного провайдера
   setLastUpdate('Выход из аккаунта');
   show('login-section'); renderSidebar();
 }
 
 // ── RENDER USER ───────────────────────────────────────────────────────────────
 function renderUser(user) {
+  activeProvider = user.provider;
   const name    =user.name||user.userId;
   const initials=name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)||'?';
   document.getElementById('user-name').textContent         =name;
@@ -125,7 +143,7 @@ function renderUser(user) {
   badge.textContent=PROVIDER_LABELS[user.provider]||user.provider;
   badge.className=`badge badge-${user.provider}`;
   document.body.className=user.provider==='yandex'?'glow-ya':user.provider==='mailru'?'glow-mail':'';
-  saveSession(user.provider,{name,email:user.email,avatar:user.avatar});
+  saveSession(user.provider,{name,email:user.email,avatar:user.avatar,userId:user.userId}); // <-- Сохраняем userId
   setLastUpdate(`Вход через ${PROVIDER_LABELS[user.provider]}`);
   renderSidebar(); startCountdown();
   show('user-section');
@@ -133,6 +151,83 @@ function renderUser(user) {
     const c=document.querySelector('.card');
     if (c){const r=c.getBoundingClientRect(); sparkle(r.left+r.width/2, r.top+r.height/2);}
   },200);
+}
+
+// ── SWITCH TO PROVIDER ──────────────────────────────────────────────────────
+function switchToProvider(provider) {
+  const sessions = getSessions();
+  const sess = sessions[provider];
+  if (!sess) return; // Не должно случиться
+
+  if (activeProvider === provider) {
+    // Это уже активный аккаунт — загружаем свежие данные с бэкенда
+    fetchMe().then(u => {
+      if (u) renderUser(u);
+      else {
+        // Токен умер
+        clearToken();
+        show('login-section');
+        renderSidebar();
+        showToast('Сессия истекла, войдите снова');
+      }
+    });
+    return;
+  }
+
+  // Показываем данные из локального хранилища (сессии)
+  renderUserFromSession(sess, provider);
+}
+
+// ── RENDER USER FROM SESSION ──────────────────────────────────────────────
+function renderUserFromSession(sess, provider) {
+  const name = sess.name || 'Пользователь';
+  document.getElementById('user-name').textContent = name;
+  document.getElementById('user-email').textContent = sess.email || 'Email не указан';
+  document.getElementById('user-email-detail').textContent = sess.email || '—';
+  document.getElementById('user-id').textContent = sess.userId || `${provider}_${sess.ts}`;
+  document.getElementById('user-provider').textContent = PROVIDER_LABELS[provider] || provider;
+  
+  const badge = document.getElementById('provider-badge');
+  badge.textContent = PROVIDER_LABELS[provider] || provider;
+  badge.className = `badge badge-${provider}`;
+  
+  // Аватар
+  const fallback = document.getElementById('avatar-fallback');
+  const img = document.getElementById('avatar-img');
+  if (sess.avatar) {
+    img.onload = () => { fallback.style.display = 'none'; img.style.display = ''; };
+    img.onerror = () => { img.style.display = 'none'; };
+    img.src = sess.avatar;
+  } else {
+    img.style.display = 'none';
+    fallback.textContent = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+    fallback.style.display = '';
+  }
+  
+  // Эффект свечения под цвет провайдера
+  document.body.className = provider === 'yandex' ? 'glow-ya' : provider === 'mailru' ? 'glow-mail' : '';
+  
+  // Скрываем таймер, если это не активный аккаунт
+  const sessionTimer = document.querySelector('.session-row');
+  if (provider !== activeProvider) {
+    if (sessionTimer) sessionTimer.style.display = 'none';
+  } else {
+    if (sessionTimer) sessionTimer.style.display = 'flex';
+    if (!_cd) startCountdown();
+  }
+  
+  // Обновляем текст кнопки "Выйти"
+  const btnLogout = document.getElementById('btn-logout');
+  const activeProviderLabel = PROVIDER_LABELS[activeProvider] || activeProvider || 'аккаунта';
+  btnLogout.innerHTML = `
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    Выйти из ${activeProviderLabel}
+  `;
+  
+  show('user-section');
 }
 
 // ── COUNTDOWN ─────────────────────────────────────────────────────────────────
@@ -168,7 +263,8 @@ function renderSidebar() {
     <div class="sb-header"><span class="sb-title">Аккаунты</span><span class="sb-hint">1 · 2 · 3</span></div>
     <div class="sb-list">${ORDER.map((p,i)=>{
       const sess=s[p],c=COLORS[p];
-      return `<div class="sb-item${sess?' connected':''}" data-p="${p}">
+      const isActive=activeProvider===p;
+      return `<div class="sb-item${sess?' connected':''}${isActive?' active':''}" data-p="${p}"${sess?' data-connected="true"':''}>
         <div class="sb-icon" style="--c:${c}">${ICONS[p]}${sess?'<span class="sb-dot"></span>':''}</div>
         <div class="sb-info"><div class="sb-name">${PROVIDER_LABELS[p]}</div>
           <div class="sb-sub" style="color:${sess?'var(--ok)':'var(--muted2)'}">${sess?timeAgo(sess.ts):`клавиша ${i+1}`}</div>
@@ -185,9 +281,15 @@ function renderSidebar() {
   panel.querySelectorAll('.sb-item').forEach(el=>{
     el.addEventListener('click',()=>{
       const p=el.dataset.p;
-      const id={vk:'btn-vk',yandex:'btn-ya',mailru:'btn-mail'}[p];
-      const btn=document.getElementById(id);
-      if(btn&&!btn.disabled){ btn.classList.add('highlight-pulse'); setTimeout(()=>{btn.classList.remove('highlight-pulse');login(p);},150); }
+      // Если аккаунт подключен → переключаем UI
+      if (el.dataset.connected==='true') {
+        switchToProvider(p);
+      } else {
+        // Не подключен → запускаем авторизацию
+        const id={vk:'btn-vk',yandex:'btn-ya',mailru:'btn-mail'}[p];
+        const btn=document.getElementById(id);
+        if(btn&&!btn.disabled){ btn.classList.add('highlight-pulse'); setTimeout(()=>{btn.classList.remove('highlight-pulse');login(p);},150); }
+      }
     });
   });
 }
