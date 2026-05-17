@@ -37,27 +37,23 @@ async function apiFetch(url, opts={}, ms=15000) {
 
 // ── UI ────────────────────────────────────────────────────────────────────────
 function show(id) {
-  ['loading-screen','login-section','user-section'].forEach(s => {
-    const el=document.getElementById(s);
-    if (el) el.style.display = s===id ? '' : 'none';
+  // Скрываем все и показываем только нужный блок с правильным display
+  ['loading-screen', 'login-section', 'user-section'].forEach(s => {
+    const el = document.getElementById(s);
+    if (!el) return;
+
+    if (s === id) {
+      // Устанавливаем нужный display в зависимости от блока
+      if (s === 'loading-screen') {
+        el.style.display = 'flex';   // loading-screen использует flex
+      } else {
+        el.style.display = 'block';  // user-section и login-section используют block
+      }
+    } else {
+      el.style.display = 'none';    // Скрываем остальные
+    }
   });
 }
-function setLoadingMsg(msg) { const e=document.getElementById('loading-text'); if(e) e.textContent=msg; }
-function showToast(msg, ok=false) {
-  const t=document.getElementById('toast');
-  if (!t) return;
-  t.textContent=msg; t.className=`toast show${ok?' toast-ok':''}`;
-  setTimeout(()=>t.classList.remove('show'), 5000);
-}
-const PM={vk:'vk',yandex:'ya',mailru:'mail'};
-function setButtonLoading(p, on) {
-  const btn=document.getElementById(`btn-${PM[p]}`), arrow=document.getElementById(`arrow-${PM[p]}`);
-  if (!btn) return;
-  btn.disabled=on;
-  arrow.innerHTML=on?'<span class="spinner-inline"></span>':'→';
-  if (on) document.body.className=p==='yandex'?'glow-ya':p==='mailru'?'glow-mail':'';
-}
-
 // ── SPARKLE ───────────────────────────────────────────────────────────────────
 function sparkle(x,y) {
   for (let i=0;i<14;i++){
