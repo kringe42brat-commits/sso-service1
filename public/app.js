@@ -115,11 +115,20 @@ async function tryRefresh() {
 
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
 async function logout() {
-  try { await apiFetch('/auth/logout',{method:'POST'},8000); } catch{}
+  try { await apiFetch('/auth/logout', {method:'POST'}, 8000); } catch{}
+  
+  // Удаляем сессию текущего провайдера из localStorage
+  const sessions = getSessions();
+  if (activeProvider && sessions[activeProvider]) {
+    delete sessions[activeProvider];
+    localStorage.setItem(SK, JSON.stringify(sessions));
+  }
+  
   clearToken(); stopCountdown(); document.body.className='';
-  activeProvider = null; // <-- Очищаем активного провайдера
+  activeProvider = null;
   setLastUpdate('Выход из аккаунта');
-  show('login-section'); renderSidebar();
+  show('login-section'); 
+  renderSidebar();
 }
 
 // ── RENDER USER ───────────────────────────────────────────────────────────────
