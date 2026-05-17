@@ -254,10 +254,10 @@ document.addEventListener('DOMContentLoaded', () => {
   history.replaceState(null,'', window.location.pathname);
 
   const token = qp.get('vk_token') || qp.get('ya_token') || qp.get('mr_token') || qp.get('token') || hp.get('token');
-  const error = hp.get('error') || qp.get('error');
+  const error = hp.get('error') || qp.get('error') || qp.get('auth_error');
 
   if (error) {
-    showToast(ERROR_LABELS[error]||`Ошибка: ${error}`);
+    const detail = qp.get("detail"); const msg = ERROR_LABELS[error] || `Ошибка: ${error}`; showToast(detail ? `${msg}: ${detail}` : msg);
     show('login-section'); renderSidebar(); return;
   }
 
