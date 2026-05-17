@@ -13,111 +13,91 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc:    ["'self'"],
-      scriptSrc:     ["'self'"],
-      scriptSrcAttr: ["'none'"],
-      styleSrc:      ["'self'","'unsafe-inline'","https://fonts.googleapis.com"],
-      fontSrc:       ["'self'","https://fonts.gstatic.com"],
-      imgSrc:        ["'self'","data:","https:","blob:"],
-      connectSrc:    ["'self'"],
-      objectSrc:     ["'none'"],
-      baseUri:       ["'none'"],
-      frameAncestors:["'none'"],
-    },
-  },
-  referrerPolicy: { policy: 'no-referrer' },
-  hsts: { maxAge: 31536000, includeSubDomains: true },
+  contentSecurityPolicy: { directives: {
+    defaultSrc:["'self'"], scriptSrc:["'self'"], scriptSrcAttr:["'none'"],
+    styleSrc:["'self'","'unsafe-inline'","https://fonts.googleapis.com"],
+    fontSrc:["'self'","https://fonts.gstatic.com"],
+    imgSrc:["'self'","data:","https:","blob:"],
+    connectSrc:["'self'"], objectSrc:["'none'"], baseUri:["'none'"], frameAncestors:["'none'"],
+  }},
+  referrerPolicy:{ policy:'no-referrer' },
+  hsts:{ maxAge:31536000, includeSubDomains:true },
 }));
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'https://sso-service1.onrender.com', credentials: true }));
+app.use(cors({ origin: process.env.FRONTEND_URL||'https://sso-service1.onrender.com', credentials:true }));
 app.use(cookieParse());
-app.use(express.json({ limit: '10kb' }));
+app.use(express.json({ limit:'10kb' }));
 app.use(express.static('public'));
 
-// ── ENV ─────────────────────────────────────────────────────────────────────
-const REQUIRED = ['JWT_SECRET','FRONTEND_URL',
-  'VK_CLIENT_ID','VK_CLIENT_SECRET','VK_REDIRECT_URI',
-  'YANDEX_CLIENT_ID','YANDEX_CLIENT_SECRET','YANDEX_REDIRECT_URI',
-  'MAILRU_CLIENT_ID','MAILRU_CLIENT_SECRET','MAILRU_REDIRECT_URI'];
-for (const k of REQUIRED) { if (!process.env[k]) { console.error(`[FATAL] Missing: ${k}`); process.exit(1); } }
-if (process.env.JWT_SECRET.length < 32) { console.error('[FATAL] JWT_SECRET too short'); process.exit(1); }
+// ── ENV ──────────────────────────────────────────────────────────────────────
+const REQ=['JWT_SECRET','FRONTEND_URL','VK_CLIENT_ID','VK_CLIENT_SECRET','VK_REDIRECT_URI','YANDEX_CLIENT_ID','YANDEX_CLIENT_SECRET','YANDEX_REDIRECT_URI','MAILRU_CLIENT_ID','MAILRU_CLIENT_SECRET','MAILRU_REDIRECT_URI'];
+for (const k of REQ) { if (!process.env[k]) { console.error(`[FATAL] Missing: ${k}`); process.exit(1); } }
+if (process.env.JWT_SECRET.length<32) { console.error('[FATAL] JWT_SECRET too short'); process.exit(1); }
 
-const ACCESS_SECRET  = process.env.ACCESS_TOKEN_SECRET  || process.env.JWT_SECRET;
-const REFRESH_SECRET = process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET + '_r';
-const JWT_ISS = 'sso-service', JWT_AUD = 'sso-client';
+const ACC_SEC = process.env.ACCESS_TOKEN_SECRET  || process.env.JWT_SECRET;
+const REF_SEC = process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET+'_r';
+const ISS='sso-service', AUD='sso-client';
 
-// ── RATE LIMIT ───────────────────────────────────────────────────────────────
 const authLimiter    = rateLimit({ windowMs:15*60*1000, max:30, standardHeaders:true, legacyHeaders:false });
 const refreshLimiter = rateLimit({ windowMs:5*60*1000,  max:10, standardHeaders:true, legacyHeaders:false });
 
-// ── HTTP CLIENT ──────────────────────────────────────────────────────────────
-const http = axios.create({ timeout: 12000, headers: { 'User-Agent': 'SSO-Service/2.0' } });
+// axios — отдельные инстансы для разных провайдеров
+const FORM_HEADERS = { 'Content-Type':'application/x-www-form-urlencoded' };
+const http = axios.create({ timeout:15000, headers:{ 'User-Agent':'SSO-Service/2.0' } });
 
-// ── PKCE ─────────────────────────────────────────────────────────────────────
 const genVerifier  = () => crypto.randomBytes(64).toString('base64url');
 const genChallenge = v  => crypto.createHash('sha256').update(v).digest('base64url');
 const genState     = () => crypto.randomBytes(32).toString('hex');
 
-// ── COOKIES ──────────────────────────────────────────────────────────────────
-const isProd = process.env.NODE_ENV === 'production';
-const AUTH_C    = { httpOnly:true, secure:isProd, sameSite:'lax', maxAge:10*60*1000,       path:'/' };
-const REFRESH_C = { httpOnly:true, secure:isProd, sameSite:'lax', maxAge:7*24*3600*1000,   path:'/' };
-const clearRt   = res => res.clearCookie('refreshToken', { httpOnly:true, secure:isProd, sameSite:'lax', path:'/' });
+const isProd    = process.env.NODE_ENV==='production';
+const AUTH_C    = { httpOnly:true, secure:isProd, sameSite:'lax', maxAge:10*60*1000,     path:'/' };
+const REFRESH_C = { httpOnly:true, secure:isProd, sameSite:'lax', maxAge:7*24*3600*1000, path:'/' };
+const clearRt   = res => res.clearCookie('refreshToken',{ httpOnly:true, secure:isProd, sameSite:'lax', path:'/' });
 
-// ── BLACKLIST ─────────────────────────────────────────────────────────────────
 const revokedJtis = new Set();
-setInterval(() => { if (revokedJtis.size > 10000) revokedJtis.clear(); }, 15*60*1000);
+setInterval(()=>{ if(revokedJtis.size>10000) revokedJtis.clear(); }, 15*60*1000);
 
-// ── SANITIZE ─────────────────────────────────────────────────────────────────
-const str = (v, max) => (typeof v === 'string' ? v.slice(0, max).trim() || null : null);
-const avatar = url => {
-  if (typeof url !== 'string' || !url.startsWith('https://') || url.length > 512) return null;
-  try {
-    const h = new URL(url).hostname;
-    if (!['avatars.yandex.net','userapi.com','vk.com','img.imgsmail.ru','filin.vkuser','st.mycdn.me','cdn.jsdelivr.net'].some(d => h.includes(d))) return null;
-  } catch { return null; }
-  return url;
+const trim      = (v,n) => typeof v==='string' ? v.slice(0,n).trim()||null : null;
+const safeAvatar= url => {
+  if (typeof url!=='string'||!url.startsWith('https://')||url.length>512) return null;
+  try { new URL(url); return url; } catch { return null; }
 };
 
-// ── JWT ───────────────────────────────────────────────────────────────────────
 function issueTokens(u) {
-  const base = { sub: u.id, email: str(u.email,320), provider: str(u.provider,32), name: str(u.name,128), av: avatar(u.avatar) };
+  const base={ sub:u.id, email:trim(u.email,320), provider:trim(u.provider,32), name:trim(u.name,128), av:safeAvatar(u.avatar) };
   return {
-    accessToken:  jwt.sign({ ...base, jti: crypto.randomUUID() }, ACCESS_SECRET,  { expiresIn:'15m', issuer:JWT_ISS, audience:JWT_AUD, algorithm:'HS256' }),
-    refreshToken: jwt.sign({ ...base, jti: crypto.randomUUID(), type:'refresh' },  REFRESH_SECRET, { expiresIn:'7d',  issuer:JWT_ISS, audience:JWT_AUD, algorithm:'HS256' }),
+    accessToken:  jwt.sign({...base,jti:crypto.randomUUID()}, ACC_SEC, {expiresIn:'15m',issuer:ISS,audience:AUD,algorithm:'HS256'}),
+    refreshToken: jwt.sign({...base,jti:crypto.randomUUID(),type:'refresh'}, REF_SEC, {expiresIn:'7d',issuer:ISS,audience:AUD,algorithm:'HS256'}),
   };
 }
+const verifyAcc = t => jwt.verify(t, ACC_SEC, {algorithms:['HS256'],issuer:ISS,audience:AUD});
+const verifyRef = t => jwt.verify(t, REF_SEC, {algorithms:['HS256'],issuer:ISS,audience:AUD});
 
-const verifyAcc = t => jwt.verify(t, ACCESS_SECRET,  { algorithms:['HS256'], issuer:JWT_ISS, audience:JWT_AUD });
-const verifyRef = t => jwt.verify(t, REFRESH_SECRET, { algorithms:['HS256'], issuer:JWT_ISS, audience:JWT_AUD });
+function requireAuth(req,res,next){
+  const t=(req.headers.authorization||'').replace('Bearer ','').trim();
+  if (!t) return res.status(401).json({error:'Нет токена'});
+  try { const d=verifyAcc(t); if(revokedJtis.has(d.jti)) return res.status(401).json({error:'Отозван'}); req.user=d; req.token=t; next(); }
+  catch(e){ res.status(e.name==='TokenExpiredError'?401:403).json({error:e.name==='TokenExpiredError'?'Истёк':'Недействителен'}); }
+}
+function requireXHR(req,res,next){ if(req.headers['x-requested-with']!=='XMLHttpRequest') return res.status(403).json({error:'CSRF'}); next(); }
 
-function requireAuth(req, res, next) {
-  const t = (req.headers.authorization || '').replace('Bearer ','').trim();
-  if (!t) return res.status(401).json({ error:'Токен не передан' });
-  try {
-    const d = verifyAcc(t);
-    if (revokedJtis.has(d.jti)) return res.status(401).json({ error:'Токен отозван' });
-    req.user = d; req.token = t; next();
-  } catch(e) {
-    res.status(e.name==='TokenExpiredError'?401:403).json({ error: e.name==='TokenExpiredError'?'Токен истёк':'Недействительный токен' });
-  }
+// Вспомогательная функция: редирект с ошибкой + подробности в логах
+function redirectError(res, code, detail) {
+  console.error(`[ERROR:${code}]`, detail);
+  return res.redirect(`/?auth_error=${encodeURIComponent(code)}&detail=${encodeURIComponent(String(detail).slice(0,200))}`);
 }
 
-function requireXHR(req, res, next) {
-  if (req.headers['x-requested-with'] !== 'XMLHttpRequest') return res.status(403).json({ error:'CSRF check failed' });
-  next();
-}
+app.get('/health', (_,res)=>res.json({status:'ok',uptime:Math.floor(process.uptime()),providers:['vk','yandex','mailru']}));
 
-// ── HEALTH ───────────────────────────────────────────────────────────────────
-app.get('/health', (_, res) => res.json({ status:'ok', uptime:Math.floor(process.uptime()), providers:['vk','yandex','mailru'] }));
-
-// ── VK ID ────────────────────────────────────────────────────────────────────
-app.get('/auth/vk', authLimiter, (req, res) => {
-  const verifier = genVerifier(), state = genState();
-  res.cookie('vk_auth', JSON.stringify({ state, verifier }), AUTH_C);
-  const u = new URL('https://id.vk.com/authorize');
+// ════════════════════════════════════════════════════════════════
+// VK ID
+// ИСПРАВЛЕНО: параметры токена идут в ТЕЛЕ запроса (urlencoded),
+// а не как query string
+// ════════════════════════════════════════════════════════════════
+app.get('/auth/vk', authLimiter, (req,res)=>{
+  const verifier=genVerifier(), state=genState();
+  res.cookie('vk_auth', JSON.stringify({state,verifier}), AUTH_C);
+  const u=new URL('https://id.vk.com/authorize');
   u.searchParams.set('client_id',            process.env.VK_CLIENT_ID);
   u.searchParams.set('redirect_uri',         process.env.VK_REDIRECT_URI);
   u.searchParams.set('response_type',        'code');
@@ -128,49 +108,85 @@ app.get('/auth/vk', authLimiter, (req, res) => {
   res.json({ authUrl: u.toString() });
 });
 
-app.get('/auth/vk/callback', async (req, res) => {
+app.get('/auth/vk/callback', async (req,res)=>{
+  const {code, state, device_id}=req.query;  // device_id обязателен для VK ID 2025+
+  const raw=req.cookies.vk_auth;
+  res.clearCookie('vk_auth',{path:'/'});
+
+  if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code param');
+  if (!raw) return redirectError(res,'invalid_state','no vk_auth cookie');
+  let saved; try { saved=JSON.parse(raw); } catch(e) { return redirectError(res,'invalid_state','cookie parse error: '+e.message); }
+  if (!state||state!==saved.state||!saved.verifier) return redirectError(res,'invalid_state',`state mismatch`);
+
   try {
-    const { code, state } = req.query;
-    const raw = req.cookies.vk_auth;
-    res.clearCookie('vk_auth', { path:'/' });
-
-    if (!code || typeof code !== 'string') return res.redirect('/#error=invalid_code');
-    if (!raw) return res.redirect('/#error=invalid_state');
-    let saved; try { saved = JSON.parse(raw); } catch { return res.redirect('/#error=invalid_state'); }
-    if (state !== saved.state || !saved.verifier) return res.redirect('/#error=invalid_state');
-
-    // Обмен кода на токен
-    const { data: td } = await http.post('https://id.vk.com/oauth2/auth', null, {
-      params: { grant_type:'authorization_code', code, client_id:process.env.VK_CLIENT_ID, client_secret:process.env.VK_CLIENT_SECRET, redirect_uri:process.env.VK_REDIRECT_URI, code_verifier:saved.verifier },
+    // ИСПРАВЛЕНО: POST с телом urlencoded, не query params
+    const tokenBody = new URLSearchParams({
+      grant_type:    'authorization_code',
+      code,
+      client_id:     process.env.VK_CLIENT_ID,
+      client_secret: process.env.VK_CLIENT_SECRET,
+      redirect_uri:  process.env.VK_REDIRECT_URI,
+      code_verifier: saved.verifier,
+      ...(device_id ? { device_id } : {}),  // VK ID 2025+ требует device_id
     });
-    if (!td.access_token) throw new Error('VK: no access_token — ' + JSON.stringify(td));
 
-    // ИСПРАВЛЕНО: используем api.vk.com вместо id.vk.com/oauth2/user_info
-    const { data: apiData } = await http.get('https://api.vk.com/method/users.get', {
-      params: { access_token: td.access_token, user_ids: td.user_id, fields: 'photo_200', v: '5.199' },
-    });
-    const vk = apiData?.response?.[0];
-    if (!vk) throw new Error('VK: empty users.get response: ' + JSON.stringify(apiData));
+    console.log('[VK] Exchanging code for token, device_id:', device_id||'none');
+    const {data:td} = await http.post(
+      'https://id.vk.com/oauth2/auth',
+      tokenBody.toString(),
+      { headers: FORM_HEADERS }
+    );
+    console.log('[VK] Token response keys:', Object.keys(td));
 
-    const tokens = issueTokens({
-      id: `vk_${vk.id}`, provider:'vk',
-      email:  td.email || null,
-      name:   [vk.first_name, vk.last_name].filter(Boolean).join(' ') || null,
-      avatar: vk.photo_200 || null,
-    });
+    if (!td.access_token) return redirectError(res,'vk_auth_failed','no access_token: '+JSON.stringify(td));
+
+    const userId = td.user_id || td.userId;
+    if (!userId) return redirectError(res,'vk_auth_failed','no user_id in token response');
+
+    let name=null, avatar=null;
+
+    // Попытка 1: api.vk.com (стабильный)
+    try {
+      console.log('[VK] Trying api.vk.com...');
+      const {data:a}=await http.get('https://api.vk.com/method/users.get',{
+        params:{ access_token:td.access_token, user_ids:userId, fields:'photo_200', v:'5.131' },
+      });
+      const u=a?.response?.[0];
+      if (u) { name=[u.first_name,u.last_name].filter(Boolean).join(' ')||null; avatar=u.photo_200||null; console.log('[VK] Got profile via api.vk.com'); }
+    } catch(e) { console.warn('[VK] api.vk.com failed:',e.message); }
+
+    // Попытка 2: id.vk.com/oauth2/user_info
+    if (!name) {
+      try {
+        console.log('[VK] Trying user_info endpoint...');
+        const {data:b}=await http.post(
+          'https://id.vk.com/oauth2/user_info',
+          new URLSearchParams({access_token:td.access_token, client_id:process.env.VK_CLIENT_ID}).toString(),
+          { headers: FORM_HEADERS }
+        );
+        const u=b?.user;
+        if (u) { name=[u.first_name,u.last_name].filter(Boolean).join(' ')||null; avatar=u.avatar||null; console.log('[VK] Got profile via user_info'); }
+      } catch(e) { console.warn('[VK] user_info failed:',e.message); }
+    }
+
+    // Попытка 3: только user_id + email (работает всегда)
+    console.log(`[VK] Final: userId=${userId}, name=${name}, hasAvatar=${!!avatar}`);
+
+    const tokens=issueTokens({id:`vk_${userId}`, provider:'vk', email:td.email||null, name, avatar});
     res.cookie('refreshToken', tokens.refreshToken, REFRESH_C);
-    res.redirect(`/#token=${tokens.accessToken}`);
+    res.redirect(`/?vk_token=${tokens.accessToken}`);
   } catch(e) {
-    console.error('[VK callback]', e.response?.data ?? e.message);
-    res.redirect('/#error=vk_auth_failed');
+    redirectError(res,'vk_auth_failed', e.response?.data ? JSON.stringify(e.response.data) : e.message);
   }
 });
 
-// ── YANDEX ───────────────────────────────────────────────────────────────────
-app.get('/auth/yandex', authLimiter, (req, res) => {
-  const state = genState();
+// ════════════════════════════════════════════════════════════════
+// YANDEX
+// ════════════════════════════════════════════════════════════════
+app.get('/auth/yandex', authLimiter, (req,res)=>{
+  const state=genState();
   res.cookie('ya_auth', state, AUTH_C);
-  const u = new URL('https://oauth.yandex.ru/authorize');
+  const u=new URL('https://oauth.yandex.ru/authorize');
   u.searchParams.set('client_id',    process.env.YANDEX_CLIENT_ID);
   u.searchParams.set('redirect_uri', process.env.YANDEX_REDIRECT_URI);
   u.searchParams.set('response_type','code');
@@ -178,40 +194,39 @@ app.get('/auth/yandex', authLimiter, (req, res) => {
   res.json({ authUrl: u.toString() });
 });
 
-app.get('/auth/yandex/callback', async (req, res) => {
+app.get('/auth/yandex/callback', async (req,res)=>{
+  const {code,state}=req.query;
+  const saved=req.cookies.ya_auth;
+  res.clearCookie('ya_auth',{path:'/'});
+  if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code');
+  if (!saved||state!==saved)         return redirectError(res,'invalid_state','state mismatch');
   try {
-    const { code, state } = req.query;
-    const saved = req.cookies.ya_auth;
-    res.clearCookie('ya_auth', { path:'/' });
-    if (!code || typeof code !== 'string') return res.redirect('/#error=invalid_code');
-    if (!saved || state !== saved)         return res.redirect('/#error=invalid_state');
+    const tokenBody=new URLSearchParams({grant_type:'authorization_code',code,client_id:process.env.YANDEX_CLIENT_ID,client_secret:process.env.YANDEX_CLIENT_SECRET,redirect_uri:process.env.YANDEX_REDIRECT_URI});
+    const {data:td}=await http.post('https://oauth.yandex.ru/token', tokenBody.toString(), {headers:FORM_HEADERS});
+    if (!td.access_token) throw new Error('no access_token: '+JSON.stringify(td));
 
-    const params = new URLSearchParams({ grant_type:'authorization_code', code, client_id:process.env.YANDEX_CLIENT_ID, client_secret:process.env.YANDEX_CLIENT_SECRET, redirect_uri:process.env.YANDEX_REDIRECT_URI });
-    const { data: td } = await http.post('https://oauth.yandex.ru/token', params);
-    if (!td.access_token) throw new Error('Yandex: no access_token');
+    const {data:ya}=await http.get('https://login.yandex.ru/info',{headers:{Authorization:`OAuth ${td.access_token}`},params:{format:'json'}});
+    if (!ya.id) throw new Error('no user id');
 
-    const { data: ya } = await http.get('https://login.yandex.ru/info', { headers:{ Authorization:`OAuth ${td.access_token}` }, params:{ format:'json' } });
-    if (!ya.id) throw new Error('Yandex: no user id');
-
-    const tokens = issueTokens({
-      id: `yandex_${ya.id}`, provider:'yandex',
-      email:  ya.default_email || ya.emails?.[0] || null,
-      name:   ya.display_name || ya.real_name || ya.login || null,
-      avatar: ya.default_avatar_id ? `https://avatars.yandex.net/get-yapic/${ya.default_avatar_id}/islands-200` : null,
+    const tokens=issueTokens({
+      id:`yandex_${ya.id}`, provider:'yandex',
+      email: ya.default_email||ya.emails?.[0]||null,
+      name:  ya.display_name||ya.real_name||ya.login||null,
+      avatar:ya.default_avatar_id?`https://avatars.yandex.net/get-yapic/${ya.default_avatar_id}/islands-200`:null,
     });
-    res.cookie('refreshToken', tokens.refreshToken, REFRESH_C);
-    res.redirect(`/#token=${tokens.accessToken}`);
-  } catch(e) {
-    console.error('[Yandex callback]', e.response?.data ?? e.message);
-    res.redirect('/#error=yandex_auth_failed');
-  }
+    res.cookie('refreshToken',tokens.refreshToken,REFRESH_C);
+    res.redirect(`/?ya_token=${tokens.accessToken}`);
+  } catch(e){ redirectError(res,'yandex_auth_failed', e.response?.data?JSON.stringify(e.response.data):e.message); }
 });
 
-// ── MAIL.RU ───────────────────────────────────────────────────────────────────
-app.get('/auth/mailru', authLimiter, (req, res) => {
-  const state = genState();
+// ════════════════════════════════════════════════════════════════
+// MAIL.RU
+// ИСПРАВЛЕНО: явный Content-Type + два варианта userinfo
+// ════════════════════════════════════════════════════════════════
+app.get('/auth/mailru', authLimiter, (req,res)=>{
+  const state=genState();
   res.cookie('mr_auth', state, AUTH_C);
-  const u = new URL('https://connect.mail.ru/oauth/authorize');
+  const u=new URL('https://connect.mail.ru/oauth/authorize');
   u.searchParams.set('client_id',    process.env.MAILRU_CLIENT_ID);
   u.searchParams.set('redirect_uri', process.env.MAILRU_REDIRECT_URI);
   u.searchParams.set('response_type','code');
@@ -220,82 +235,80 @@ app.get('/auth/mailru', authLimiter, (req, res) => {
   res.json({ authUrl: u.toString() });
 });
 
-app.get('/auth/mailru/callback', async (req, res) => {
+app.get('/auth/mailru/callback', async (req,res)=>{
+  const {code,state}=req.query;
+  const saved=req.cookies.mr_auth;
+  res.clearCookie('mr_auth',{path:'/'});
+  if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code');
+  if (!saved||state!==saved)         return redirectError(res,'invalid_state','state mismatch');
   try {
-    const { code, state } = req.query;
-    const saved = req.cookies.mr_auth;
-    res.clearCookie('mr_auth', { path:'/' });
-    if (!code || typeof code !== 'string') return res.redirect('/#error=invalid_code');
-    if (!saved || state !== saved)         return res.redirect('/#error=invalid_state');
+    // ИСПРАВЛЕНО: явный Content-Type в теле
+    const tokenBody=new URLSearchParams({
+      grant_type:'authorization_code', code,
+      client_id:process.env.MAILRU_CLIENT_ID,
+      client_secret:process.env.MAILRU_CLIENT_SECRET,
+      redirect_uri:process.env.MAILRU_REDIRECT_URI,
+    });
+    console.log('[MR] Exchanging code for token...');
+    const {data:td}=await http.post('https://connect.mail.ru/oauth/token', tokenBody.toString(), {headers:FORM_HEADERS});
+    console.log('[MR] Token response keys:', Object.keys(td));
+    if (!td.access_token) return redirectError(res,'mailru_auth_failed','no access_token: '+JSON.stringify(td));
 
-    const params = new URLSearchParams({ grant_type:'authorization_code', code, client_id:process.env.MAILRU_CLIENT_ID, client_secret:process.env.MAILRU_CLIENT_SECRET, redirect_uri:process.env.MAILRU_REDIRECT_URI });
-    const { data: td } = await http.post('https://connect.mail.ru/oauth/token', params);
-    if (!td.access_token) throw new Error('Mail.ru: no access_token');
-
-    // ИСПРАВЛЕНО: access_token как query-параметр (более надёжно чем Bearer для Mail.ru)
+    // Попытка 1: query param
     let mu;
     try {
-      const r1 = await http.get('https://oauth.mail.ru/userinfo', { params: { access_token: td.access_token } });
-      mu = r1.data;
-    } catch {
-      // fallback: Bearer header
-      const r2 = await http.get('https://oauth.mail.ru/userinfo', { headers: { Authorization: `Bearer ${td.access_token}` } });
-      mu = r2.data;
+      console.log('[MR] Trying userinfo with query param...');
+      const r=await http.get('https://oauth.mail.ru/userinfo',{params:{access_token:td.access_token}});
+      mu=r.data; console.log('[MR] userinfo response:', JSON.stringify(mu).slice(0,200));
+    } catch(e){
+      console.warn('[MR] query param failed:',e.message);
+      // Попытка 2: Bearer header
+      try {
+        console.log('[MR] Trying userinfo with Bearer...');
+        const r=await http.get('https://oauth.mail.ru/userinfo',{headers:{Authorization:`Bearer ${td.access_token}`}});
+        mu=r.data;
+      } catch(e2){ return redirectError(res,'mailru_auth_failed','userinfo failed: '+e2.message); }
     }
-    if (!mu || !mu.id) throw new Error('Mail.ru: empty userinfo — ' + JSON.stringify(mu));
 
-    const tokens = issueTokens({
-      id: `mailru_${mu.id}`, provider:'mailru',
-      email:  mu.email || null,
-      name:   mu.name  || null,
-      avatar: mu.image || null,
-    });
-    res.cookie('refreshToken', tokens.refreshToken, REFRESH_C);
-    res.redirect(`/#token=${tokens.accessToken}`);
-  } catch(e) {
-    console.error('[Mail.ru callback]', e.response?.data ?? e.message);
-    res.redirect('/#error=mailru_auth_failed');
-  }
+    if (!mu?.id) return redirectError(res,'mailru_auth_failed','empty userinfo: '+JSON.stringify(mu));
+
+    const tokens=issueTokens({id:`mailru_${mu.id}`,provider:'mailru',email:mu.email||null,name:mu.name||null,avatar:mu.image||null});
+    res.cookie('refreshToken',tokens.refreshToken,REFRESH_C);
+    res.redirect(`/?mr_token=${tokens.accessToken}`);
+  } catch(e){ redirectError(res,'mailru_auth_failed', e.response?.data?JSON.stringify(e.response.data):e.message); }
 });
 
-// ── AUTH ME ───────────────────────────────────────────────────────────────────
-app.get('/auth/me', requireAuth, (req, res) => res.json({
-  userId: req.user.sub, email: req.user.email||null,
-  provider: req.user.provider, name: req.user.name||null, avatar: req.user.av||null,
+// ── AUTH ENDPOINTS ────────────────────────────────────────────────────────────
+app.get('/auth/me', requireAuth, (req,res)=>res.json({
+  userId:req.user.sub, email:req.user.email||null,
+  provider:req.user.provider, name:req.user.name||null, avatar:req.user.av||null,
 }));
 
-// ── REFRESH ───────────────────────────────────────────────────────────────────
-app.post('/auth/refresh', refreshLimiter, requireXHR, (req, res) => {
-  const rt = req.cookies.refreshToken;
-  if (!rt) return res.status(401).json({ error:'Нет refresh token' });
+app.post('/auth/refresh', refreshLimiter, requireXHR, (req,res)=>{
+  const rt=req.cookies.refreshToken;
+  if (!rt) return res.status(401).json({error:'Нет refresh token'});
   try {
-    const d = verifyRef(rt);
-    if (d.type !== 'refresh') return res.status(403).json({ error:'Неверный тип' });
-    if (revokedJtis.has(d.jti)) return res.status(401).json({ error:'Отозван' });
-    const tokens = issueTokens({ id:d.sub, email:d.email, provider:d.provider, name:d.name, avatar:d.av });
-    res.cookie('refreshToken', tokens.refreshToken, REFRESH_C);
-    res.json({ accessToken: tokens.accessToken });
-  } catch(e) {
-    clearRt(res);
-    res.status(403).json({ error:'Недействительный refresh token' });
-  }
+    const d=verifyRef(rt);
+    if (d.type!=='refresh'||revokedJtis.has(d.jti)) return res.status(401).json({error:'Недействителен'});
+    const tokens=issueTokens({id:d.sub,email:d.email,provider:d.provider,name:d.name,avatar:d.av});
+    res.cookie('refreshToken',tokens.refreshToken,REFRESH_C);
+    res.json({accessToken:tokens.accessToken});
+  } catch { clearRt(res); res.status(403).json({error:'Ошибка refresh'}); }
 });
 
-// ── LOGOUT ────────────────────────────────────────────────────────────────────
-app.post('/auth/logout', requireAuth, requireXHR, (req, res) => {
+app.post('/auth/logout', requireAuth, requireXHR, (req,res)=>{
   if (req.user.jti) revokedJtis.add(req.user.jti);
-  const rt = req.cookies.refreshToken;
-  if (rt) { try { const d = verifyRef(rt); if (d.jti) revokedJtis.add(d.jti); } catch {} }
-  clearRt(res);
-  res.json({ message:'Выход выполнен' });
+  const rt=req.cookies.refreshToken;
+  if (rt) { try{ const d=verifyRef(rt); if(d.jti) revokedJtis.add(d.jti); }catch{} }
+  clearRt(res); res.json({message:'Выход выполнен'});
 });
 
-app.use((err, req, res, next) => { console.error('[ERR]', err.message); res.status(500).json({ error:'Ошибка сервера' }); });
+app.use((err,req,res,next)=>{ console.error('[ERR]',err.message); res.status(500).json({error:'Ошибка сервера'}); });
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ SSO на порту ${PORT} | prod=${isProd}`);
-  console.log(`   VK  callback: ${process.env.VK_REDIRECT_URI}`);
-  console.log(`   Ya  callback: ${process.env.YANDEX_REDIRECT_URI}`);
-  console.log(`   MR  callback: ${process.env.MAILRU_REDIRECT_URI}`);
+const PORT=process.env.PORT||3001;
+app.listen(PORT,'0.0.0.0',()=>{
+  console.log(`✅ SSO порт ${PORT} | prod=${isProd}`);
+  console.log(`   VK: ${process.env.VK_REDIRECT_URI}`);
+  console.log(`   Ya: ${process.env.YANDEX_REDIRECT_URI}`);
+  console.log(`   MR: ${process.env.MAILRU_REDIRECT_URI}`);
 });
