@@ -242,7 +242,6 @@ app.get('/auth/mailru/callback', async (req,res)=>{
   if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code');
   if (!saved||state!==saved)         return redirectError(res,'invalid_state','state mismatch');
   try {
-    // ИСПРАВЛЕНО: явный Content-Type в теле
     const tokenBody=new URLSearchParams({
       grant_type:'authorization_code', code,
       client_id:process.env.MAILRU_CLIENT_ID,
@@ -251,28 +250,33 @@ app.get('/auth/mailru/callback', async (req,res)=>{
     });
     console.log('[MR] Exchanging code for token...');
     const {data:td}=await http.post('https://connect.mail.ru/oauth/token', tokenBody.toString(), {headers:FORM_HEADERS});
-    console.log('[MR] Token response keys:', Object.keys(td));
+    console.log('[MR] Token keys:', Object.keys(td));
     if (!td.access_token) return redirectError(res,'mailru_auth_failed','no access_token: '+JSON.stringify(td));
 
-    // Попытка 1: query param
-    let mu;
-    try {
-      console.log('[MR] Trying userinfo with query param...');
-      const r=await http.get('https://oauth.mail.ru/userinfo',{params:{access_token:td.access_token}});
-      mu=r.data; console.log('[MR] userinfo response:', JSON.stringify(mu).slice(0,200));
-    } catch(e){
-      console.warn('[MR] query param failed:',e.message);
-      // Попытка 2: Bearer header
-      try {
-        console.log('[MR] Trying userinfo with Bearer...');
-        const r=await http.get('https://oauth.mail.ru/userinfo',{headers:{Authorization:`Bearer ${td.access_token}`}});
-        mu=r.data;
-      } catch(e2){ return redirectError(res,'mailru_auth_failed','userinfo failed: '+e2.message); }
-    }
+    // ИСПРАВЛЕНО: Mail.ru Platform API с MD5-подписью
+    // oauth.mail.ru/userinfo не принимает токен connect.mail.ru — используем appsmail.ru
+    const apiParams = {
+      app_id:      process.env.MAILRU_CLIENT_ID,
+      method:      'users.getInfo',
+      secure:      '1',
+      session_key: td.access_token,
+    };
+    const sigStr = Object.keys(apiParams).sort().map(k=>`${k}=${apiParams[k]}`).join('') + process.env.MAILRU_CLIENT_SECRET;
+    const sig = crypto.createHash('md5').update(sigStr).digest('hex');
+    console.log('[MR] Calling platform API...');
+    const {data:muArr}=await http.get('https://www.appsmail.ru/platform/api', { params:{...apiParams, sig} });
+    const mu = Array.isArray(muArr) ? muArr[0] : muArr;
+    console.log('[MR] Platform API response:', JSON.stringify(mu).slice(0,200));
+    if (!mu?.uid && !mu?.email) return redirectError(res,'mailru_auth_failed','empty platform response: '+JSON.stringify(mu));
 
-    if (!mu?.id) return redirectError(res,'mailru_auth_failed','empty userinfo: '+JSON.stringify(mu));
-
-    const tokens=issueTokens({id:`mailru_${mu.id}`,provider:'mailru',email:mu.email||null,name:mu.name||null,avatar:mu.image||null});
+    const userId = mu.uid || td.x_mailru_vid || mu.id;
+    const tokens=issueTokens({
+      id:`mailru_${userId}`,
+      provider:'mailru',
+      email:  mu.email || td.email || null,
+      name:   [mu.first_name,mu.last_name].filter(Boolean).join(' ') || mu.nick || null,
+      avatar: mu.pic_190 || mu.pic_big || mu.pic || null,
+    });
     res.cookie('refreshToken',tokens.refreshToken,REFRESH_C);
     res.redirect(`/?mr_token=${tokens.accessToken}`);
   } catch(e){ redirectError(res,'mailru_auth_failed', e.response?.data?JSON.stringify(e.response.data):e.message); }

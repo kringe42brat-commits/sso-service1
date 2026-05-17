@@ -263,14 +263,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (token) {
     setToken(token);
-    setLoadingMsg('Загрузка профиля...');
-    const wt=setTimeout(()=>setLoadingMsg('Получаем данные...'), 3000);
-    fetchMe().then(u=>{
-      clearTimeout(wt);
-      if (u) { renderUser(u); }
-      else   { clearToken(); show('login-section'); showToast('Не удалось загрузить профиль'); }
+    setLoadingMsg('Загружаем профиль...');
+
+    // Пробуем получить профиль, с retry если сервер ещё не готов
+    async function loadProfileWithRetry(attempts = 3) {
+      for (let i = 0; i < attempts; i++) {
+        if (i > 0) {
+          setLoadingMsg(`Повторная попытка ${i}/${attempts-1}...`);
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        const u = await fetchMe();
+        if (u) { renderUser(u); renderSidebar(); return; }
+      }
+      // Все попытки провалились — показываем логин с ошибкой
+      clearToken();
+      show('login-section');
       renderSidebar();
-    });
+      showToast('Не удалось загрузить профиль. Попробуйте войти снова.');
+    }
+
+    loadProfileWithRetry();
     return;
   }
 
