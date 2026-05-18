@@ -116,18 +116,15 @@ async function tryRefresh() {
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
 async function logout() {
   try { await apiFetch('/auth/logout', {method:'POST'}, 8000); } catch{}
-  
-  // Удаляем сессию текущего провайдера из localStorage
-  const sessions = getSessions();
-  if (activeProvider && sessions[activeProvider]) {
-    delete sessions[activeProvider];
-    localStorage.setItem(SK, JSON.stringify(sessions));
-  }
-  
+
+  // Очищаем ВСЕ сессии из localStorage после выхода
+  // (они привязаны к одному refresh-cookie, который сервер уже инвалидировал)
+  localStorage.removeItem(SK);
+
   clearToken(); stopCountdown(); document.body.className='';
   activeProvider = null;
   setLastUpdate('Выход из аккаунта');
-  show('login-section'); 
+  show('login-section');
   renderSidebar();
 }
 
@@ -164,16 +161,11 @@ function renderUser(user) {
 
 // ── SWITCH TO PROVIDER ──────────────────────────────────────────────────────
 function switchToProvider(provider) {
-  const sessions = getSessions();
-  const sess = sessions[provider];
-  if (!sess) return; // Не должно случиться
-
   if (activeProvider === provider) {
-    // Это уже активный аккаунт — загружаем свежие данные с бэкенда
+    // Это активный аккаунт — обновляем данные с бэкенда
     fetchMe().then(u => {
       if (u) renderUser(u);
       else {
-        // Токен умер
         clearToken();
         show('login-section');
         renderSidebar();
@@ -183,8 +175,11 @@ function switchToProvider(provider) {
     return;
   }
 
-  // Показываем данные из локального хранилища (сессии)
-  renderUserFromSession(sess, provider);
+  // Не-активный провайдер — SSO поддерживает одну сессию одновременно.
+  // Предлагаем войти через него (новая авторизация).
+  // Текущий токен остаётся активным до явного выхода.
+  showToast(`Войдите через ${PROVIDER_LABELS[provider] || provider} для переключения аккаунта`);
+  login(provider);
 }
 
 // ── RENDER USER FROM SESSION ──────────────────────────────────────────────
@@ -224,17 +219,6 @@ function renderUserFromSession(sess, provider) {
     if (sessionTimer) sessionTimer.style.display = 'flex';
     if (!_cd) startCountdown();
   }
-  
-  // Обновляем текст кнопки "Выйти"
-  const btnLogout = document.getElementById('btn-logout');
-  const activeProviderLabel = PROVIDER_LABELS[activeProvider] || activeProvider || 'аккаунта';
-  btnLogout.innerHTML = `
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-      <polyline points="16,17 21,12 16,7"/><line x1="21" y1="12" x2="9" y2="12"/>
-    </svg>
-    Выйти из ${activeProviderLabel}
-  `;
   
   show('user-section');
 }
