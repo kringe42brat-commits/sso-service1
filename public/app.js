@@ -11,7 +11,7 @@ const ERROR_LABELS = {
 
 // ── IN-MEMORY TOKEN ──────────────────────────────────────────────────────────
 let _token=null, _issuedAt=null;
-let activeProvider = null; // Текущий активный провайдер (с токеном)
+let activeProvider = null;
 const TOKEN_TTL=15*60;
 const getToken  = ()  => _token;
 const setToken  = t   => { _token=t; _issuedAt=Date.now(); };
@@ -21,7 +21,7 @@ const clearToken= ()  => { _token=null; _issuedAt=null; };
 const SK='sso_sessions', UK='sso_last_update';
 const getSessions  = () => { try{ return JSON.parse(localStorage.getItem(SK)||'{}'); }catch{ return {}; } };
 const saveSession  = (p,d) => { const s=getSessions(); s[p]={...d,ts:Date.now()}; localStorage.setItem(SK,JSON.stringify(s)); };
-const setLastUpdate= a => { localStorage.setItem(UK,JSON.stringify({time:Date.now(),action:a})); renderUpdateWidget(); };
+const setLastUpdate= a => { localStorage.setItem(UK,JSON.stringify({time:Date.now(),action:a})); };
 const getLastUpdate= () => { try{ return JSON.parse(localStorage.getItem(UK)); }catch{ return null; } };
 
 // ── FETCH ────────────────────────────────────────────────────────────────────
@@ -38,18 +38,13 @@ async function apiFetch(url, opts={}, ms=15000) {
 
 // ── UI ────────────────────────────────────────────────────────────────────────
 function show(id) {
-  // Скрываем все и показываем только нужный блок с правильным display
   ['loading-screen','login-section','user-section'].forEach(s => {
     const el = document.getElementById(s);
     if (!el) return;
     if (s === id) {
-      if (s === 'loading-screen') {
-        el.style.display = 'flex';   // loading-screen использует flex
-      } else {
-        el.style.display = 'block';  // user-section и login-section используют block
-      }
+      el.style.display = s === 'loading-screen' ? 'flex' : 'block';
     } else {
-      el.style.display = 'none';    // Скрываем остальные
+      el.style.display = 'none';
     }
   });
 }
@@ -67,17 +62,6 @@ function setButtonLoading(p, on) {
   if (!btn) return;
   btn.disabled=on;
   arrow.innerHTML=on?'<span class="spinner-inline"></span>':'→';
-  if (on) document.body.className=p==='yandex'?'glow-ya':p==='mailru'?'glow-mail':'';
-}
-
-// ── SPARKLE ───────────────────────────────────────────────────────────────────
-function sparkle(x,y) {
-  for (let i=0;i<14;i++){
-    const el=document.createElement('div'); el.className='sparkle-dot';
-    const a=(i/14)*Math.PI*2, d=45+Math.random()*50;
-    el.style.cssText=`left:${x}px;top:${y}px;--tx:${Math.cos(a)*d}px;--ty:${Math.sin(a)*d}px;background:hsl(${Math.random()*80+160},100%,65%)`;
-    document.body.appendChild(el); setTimeout(()=>el.remove(),900);
-  }
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
@@ -90,7 +74,6 @@ async function login(provider) {
     window.location.href=authUrl;
   } catch(e) {
     setButtonLoading(provider, false);
-    document.body.className='';
     showToast(e.name==='AbortError'
       ? 'Сервер просыпается... подождите ~30 сек и попробуйте снова'
       : 'Ошибка соединения с сервером');
@@ -116,12 +99,8 @@ async function tryRefresh() {
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
 async function logout() {
   try { await apiFetch('/auth/logout', {method:'POST'}, 8000); } catch{}
-
-  // Очищаем ВСЕ сессии из localStorage после выхода
-  // (они привязаны к одному refresh-cookie, который сервер уже инвалидировал)
   localStorage.removeItem(SK);
-
-  clearToken(); stopCountdown(); document.body.className='';
+  clearToken(); stopCountdown();
   activeProvider = null;
   setLastUpdate('Выход из аккаунта');
   show('login-section');
@@ -148,21 +127,15 @@ function renderUser(user) {
   const badge=document.getElementById('provider-badge');
   badge.textContent=PROVIDER_LABELS[user.provider]||user.provider;
   badge.className=`badge badge-${user.provider}`;
-  document.body.className=user.provider==='yandex'?'glow-ya':user.provider==='mailru'?'glow-mail':'';
-  saveSession(user.provider,{name,email:user.email,avatar:user.avatar,userId:user.userId}); // <-- Сохраняем userId
+  saveSession(user.provider,{name,email:user.email,avatar:user.avatar,userId:user.userId});
   setLastUpdate(`Вход через ${PROVIDER_LABELS[user.provider]}`);
   renderSidebar(); startCountdown();
   show('user-section');
-  setTimeout(()=>{
-    const c=document.querySelector('.card');
-    if (c){const r=c.getBoundingClientRect(); sparkle(r.left+r.width/2, r.top+r.height/2);}
-  },200);
 }
 
 // ── SWITCH TO PROVIDER ──────────────────────────────────────────────────────
 function switchToProvider(provider) {
   if (activeProvider === provider) {
-    // Это активный аккаунт — обновляем данные с бэкенда
     fetchMe().then(u => {
       if (u) renderUser(u);
       else {
@@ -174,10 +147,6 @@ function switchToProvider(provider) {
     });
     return;
   }
-
-  // Не-активный провайдер — SSO поддерживает одну сессию одновременно.
-  // Предлагаем войти через него (новая авторизация).
-  // Текущий токен остаётся активным до явного выхода.
   showToast(`Войдите через ${PROVIDER_LABELS[provider] || provider} для переключения аккаунта`);
   login(provider);
 }
@@ -190,12 +159,11 @@ function renderUserFromSession(sess, provider) {
   document.getElementById('user-email-detail').textContent = sess.email || '—';
   document.getElementById('user-id').textContent = sess.userId || `${provider}_${sess.ts}`;
   document.getElementById('user-provider').textContent = PROVIDER_LABELS[provider] || provider;
-  
+
   const badge = document.getElementById('provider-badge');
   badge.textContent = PROVIDER_LABELS[provider] || provider;
   badge.className = `badge badge-${provider}`;
-  
-  // Аватар
+
   const fallback = document.getElementById('avatar-fallback');
   const img = document.getElementById('avatar-img');
   if (sess.avatar) {
@@ -207,11 +175,7 @@ function renderUserFromSession(sess, provider) {
     fallback.textContent = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
     fallback.style.display = '';
   }
-  
-  // Эффект свечения под цвет провайдера
-  document.body.className = provider === 'yandex' ? 'glow-ya' : provider === 'mailru' ? 'glow-mail' : '';
-  
-  // Скрываем таймер, если это не активный аккаунт
+
   const sessionTimer = document.querySelector('.session-row');
   if (provider !== activeProvider) {
     if (sessionTimer) sessionTimer.style.display = 'none';
@@ -219,7 +183,7 @@ function renderUserFromSession(sess, provider) {
     if (sessionTimer) sessionTimer.style.display = 'flex';
     if (!_cd) startCountdown();
   }
-  
+
   show('user-section');
 }
 
@@ -232,7 +196,7 @@ function startCountdown() {
     const elapsed=_issuedAt?Math.floor((Date.now()-_issuedAt)/1000):TOKEN_TTL;
     const left=Math.max(0,TOKEN_TTL-elapsed);
     el.textContent=`${Math.floor(left/60).toString().padStart(2,'0')}:${(left%60).toString().padStart(2,'0')}`;
-    el.style.color=left<120?'var(--err)':left<300?'#f5a623':'var(--ok)';
+    el.style.color=left<120?'var(--err)':left<300?'#c0392b':'var(--ok)';
     if (left===0) tryRefresh().then(ok=>{ if(ok) _issuedAt=Date.now(); });
   };
   tick(); _cd=setInterval(tick,1000);
@@ -245,15 +209,14 @@ const ICONS={
   yandex:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.32 21h-2.495V13.51H9.21L5.88 21H3.15l3.555-7.88c-1.98-.84-3.03-2.505-3.03-4.74C3.675 5.085 5.88 3 9.45 3H13.32v18zm-2.495-9.495V5.01H9.36c-1.98 0-3.15 1.17-3.15 3.18 0 1.98 1.125 3.315 3.285 3.315h1.33z"/></svg>`,
   mailru:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 13.5L2 7V18h20V7l-10 6.5zM12 11L2 5h20l-10 6z"/></svg>`,
 };
-const COLORS={vk:'#0077FF',yandex:'#FC3F1D',mailru:'#168DE2'};
+const COLORS={vk:'#4a76a8',yandex:'#e74c3c',mailru:'#5dade2'};
 const ORDER=['vk','yandex','mailru'];
 const timeAgo=ts=>{ const d=Math.floor((Date.now()-ts)/1000); if(d<60) return 'только что'; if(d<3600) return `${Math.floor(d/60)} мин назад`; if(d<86400) return `${Math.floor(d/3600)} ч назад`; return `${Math.floor(d/86400)} д назад`; };
 
 function renderSidebar() {
   const panel=document.getElementById('sidebar-panel'); if(!panel) return;
   const s=getSessions(); const count=ORDER.filter(p=>s[p]).length;
-  panel.innerHTML=`
-    <div class="sb-header"><span class="sb-title">Аккаунты</span><span class="sb-hint">1 · 2 · 3</span></div>
+  panel.innerHTML=`<div class="sb-header"><span class="sb-title">Аккаунты</span><span class="sb-hint">1 · 2 · 3</span></div>
     <div class="sb-list">${ORDER.map((p,i)=>{
       const sess=s[p],c=COLORS[p];
       const isActive=activeProvider===p;
@@ -263,7 +226,7 @@ function renderSidebar() {
           <div class="sb-sub" style="color:${sess?'var(--ok)':'var(--muted2)'}">${sess?timeAgo(sess.ts):`клавиша ${i+1}`}</div>
         </div>
         ${sess&&sess.avatar?`<img class="sb-av" src="${sess.avatar}" onerror="this.style.display='none'" alt="">`
-          :sess?`<div class="sb-av sb-av-init" style="background:${c}22;color:${c}">${(sess.name||'?')[0].toUpperCase()}</div>`
+          :sess?`<div class="sb-av sb-av-init" style="background:${c}18;color:${c}">${(sess.name||'?')[0].toUpperCase()}</div>`
           :`<div class="sb-arrow" style="color:${c}">→</div>`}
       </div>`;
     }).join('')}</div>
@@ -274,28 +237,15 @@ function renderSidebar() {
   panel.querySelectorAll('.sb-item').forEach(el=>{
     el.addEventListener('click',()=>{
       const p=el.dataset.p;
-      // Если аккаунт подключен → переключаем UI
       if (el.dataset.connected==='true') {
         switchToProvider(p);
       } else {
-        // Не подключен → запускаем авторизацию
         const id={vk:'btn-vk',yandex:'btn-ya',mailru:'btn-mail'}[p];
         const btn=document.getElementById(id);
-        if(btn&&!btn.disabled){ btn.classList.add('highlight-pulse'); setTimeout(()=>{btn.classList.remove('highlight-pulse');login(p);},150); }
+        if(btn&&!btn.disabled){ login(p); }
       }
     });
   });
-}
-
-// ── UPDATE WIDGET ─────────────────────────────────────────────────────────────
-function renderUpdateWidget() {
-  const el=document.getElementById('update-widget'); if(!el) return;
-  const now=new Date();
-  const hh=now.getHours().toString().padStart(2,'0');
-  const mm=now.getMinutes().toString().padStart(2,'0');
-  const ss=now.getSeconds().toString().padStart(2,'0');
-  const upd=getLastUpdate();
-  el.innerHTML=`<div class="upd-clock">${hh}:${mm}<span class="upd-sec">:${ss}</span></div>${upd?`<div class="upd-sep">·</div><div class="upd-info"><div class="upd-action">${upd.action}</div><div class="upd-ago">${timeAgo(upd.time)}</div></div>`:''}`;
 }
 
 // ── KEYBOARD ──────────────────────────────────────────────────────────────────
@@ -333,15 +283,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-logout')?.addEventListener('click', logout);
 
   renderSidebar();
-  setInterval(renderUpdateWidget, 1000);
-  renderUpdateWidget();
 
-  // Читаем токен из ВСЕХ возможных мест:
-  // ?vk_token=  ?ya_token=  ?mr_token=  ?token=  #token=  #error=
   const qp=new URLSearchParams(window.location.search);
   const hp=new URLSearchParams(window.location.hash.slice(1));
-
-  // Убираем параметры из URL сразу
   history.replaceState(null,'', window.location.pathname);
 
   const token = qp.get('vk_token') || qp.get('ya_token') || qp.get('mr_token') || qp.get('token') || hp.get('token');
@@ -356,7 +300,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setToken(token);
     setLoadingMsg('Загружаем профиль...');
 
-    // Пробуем получить профиль, с retry если сервер ещё не готов
     async function loadProfileWithRetry(attempts = 3) {
       for (let i = 0; i < attempts; i++) {
         if (i > 0) {
@@ -366,7 +309,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const u = await fetchMe();
         if (u) { renderUser(u); renderSidebar(); return; }
       }
-      // Все попытки провалились — показываем логин с ошибкой
       clearToken();
       show('login-section');
       renderSidebar();

@@ -4,177 +4,252 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Демо-клиент SSO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #0d0d0d;
+      --card: #1a1a1a;
+      --border: #333333;
+      --text: #e8e8e8;
+      --muted: #888888;
+      --muted2: #555555;
+      --ok: #27ae60;
+      --err: #e74c3c;
+      --vk: #4a76a8;
+    }
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
     body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-      background: #f1f5f9;
-      color: #1e293b;
+      font-family: 'PT Sans', 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
+      padding: 20px;
     }
     .container {
-      background: white;
-      border-radius: 20px;
-      border: 1px solid #e2e8f0;
-      width: 420px;
-      padding: 32px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      background: var(--card);
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 420px;
+      padding: 40px;
     }
     h2 {
-      font-size: 22px;
+      font-family: 'Literata', Georgia, serif;
+      font-size: 24px;
       font-weight: 600;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
     }
     .sub {
-      color: #64748b;
+      color: var(--muted);
       font-size: 14px;
-      margin-bottom: 24px;
-      border-bottom: 1px solid #e2e8f0;
+      margin-bottom: 28px;
       padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
     }
     .btn {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      padding: 10px 20px;
-      border-radius: 40px;
+      padding: 12px 24px;
       font-size: 14px;
-      font-weight: 500;
+      font-weight: 700;
       cursor: pointer;
-      border: 1px solid #cbd5e1;
-      background: white;
-      transition: all 0.1s;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-family: 'PT Sans', sans-serif;
+      transition: background 0.15s;
+    }
+    .btn:hover {
+      background: #222222;
+    }
+    .btn:active {
+      background: #2a2a2a;
     }
     .btn-primary {
-      background: #2787f5;
-      border-color: #2787f5;
+      background: var(--vk);
+      border-color: var(--vk);
       color: white;
     }
     .btn-primary:hover {
-      background: #1e6bd3;
+      background: #3d6391;
     }
     .btn-outline {
-      border-color: #e2e8f0;
-      background: #f8fafc;
+      border-color: var(--border);
+      background: var(--card);
+      color: var(--err);
     }
     .btn-outline:hover {
-      background: #f1f5f9;
+      background: #2a1a1a;
     }
     .profile-card {
-      background: #f8fafc;
-      border-radius: 16px;
+      background: #1f1f1f;
+      border: 1px solid var(--border);
       padding: 20px;
       margin: 20px 0;
     }
     .avatar {
-      width: 64px;
-      height: 64px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
       object-fit: cover;
-      border: 2px solid white;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      border: 1px solid var(--border);
+    }
+    .avatar-fallback {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #2a2a2a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--muted);
+      font-family: 'Literata', serif;
     }
     .info-row {
       display: flex;
       justify-content: space-between;
       padding: 8px 0;
       font-size: 14px;
-      border-bottom: 1px solid #e2e8f0;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .info-row:last-child {
+      border-bottom: none;
     }
     .info-label {
-      color: #64748b;
+      color: var(--muted);
     }
     .info-value {
-      font-weight: 500;
+      font-weight: 700;
+      text-align: right;
+      max-width: 60%;
+      word-break: break-all;
     }
     .footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
       margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .status {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--ok);
+      border-radius: 50%;
+    }
+    .status-dot.off {
+      background: var(--muted2);
     }
     .toast {
       position: fixed;
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: #1e293b;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 40px;
-      font-size: 13px;
+      background: #e8e8e8;
+      color: #1a1a1a;
+      padding: 10px 20px;
+      font-size: 14px;
       opacity: 0;
       transition: opacity 0.2s;
       pointer-events: none;
+      z-index: 100;
     }
     .toast.show {
-      opacity: 0.9;
+      opacity: 0.95;
+    }
+    .toast-ok {
+      background: var(--ok);
+      color: white;
+    }
+    .toast-err {
+      background: var(--err);
+      color: white;
     }
   </style>
 </head>
 <body>
 <div class="container" id="app">
-  <h2>🔐 Демо-клиент</h2>
+  <h2>Демо-клиент</h2>
   <div class="sub">Пример интеграции с единым SSO</div>
 
-  <div id="unauth" style="display: block;">
+  <div id="unauth">
     <button class="btn btn-primary" id="loginBtn">Войти через SSO</button>
-    <p style="margin-top: 20px; font-size: 13px; color: #64748b;">Нажмите кнопку, чтобы войти через любой из провайдеров (VK, Яндекс, Mail.ru).</p>
+    <p style="margin-top: 20px; font-size: 13px; color: var(--muted);">Нажмите кнопку, чтобы войти через любой из провайдеров (VK, Яндекс, Mail.ru).</p>
   </div>
 
   <div id="auth" style="display: none;">
     <div class="profile-card">
       <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
         <img id="avatar" class="avatar" src="" alt="avatar" style="display: none;">
-        <div id="avatarFallback" class="avatar" style="background: #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>
+        <div id="avatarFallback" class="avatar-fallback">👤</div>
         <div>
-          <div id="userName" style="font-weight: 600; font-size: 18px;">—</div>
-          <div id="userEmail" style="font-size: 13px; color: #475569;">—</div>
+          <div id="userName" style="font-weight: 700; font-size: 18px; font-family: 'Literata', serif;">—</div>
+          <div id="userEmail" style="font-size: 13px; color: var(--muted);">—</div>
         </div>
       </div>
       <div class="info-row"><span class="info-label">ID</span><span class="info-value" id="userId">—</span></div>
       <div class="info-row"><span class="info-label">Провайдер</span><span class="info-value" id="userProvider">—</span></div>
+      <div class="info-row"><span class="info-label">Email</span><span class="info-value" id="userEmailDetail">—</span></div>
     </div>
     <div class="footer">
       <button class="btn btn-outline" id="logoutBtn">Выйти</button>
-      <span style="font-size: 12px; color: #94a3b8;">Сессия активна</span>
+      <div class="status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Сессия активна</span>
+      </div>
     </div>
   </div>
 </div>
 <div id="toast" class="toast"></div>
 
 <script>
-  const API_BASE = ''; // относительные пути
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ЗАМЕНИТЕ НА ВАШ URL НА RENDER
+  // ═══════════════════════════════════════════════════════════════════════════
+  const SSO_BASE_URL = 'https://sso-service1.onrender.com';
+  // ═══════════════════════════════════════════════════════════════════════════
+
   let accessToken = null;
 
   function showToast(msg, isError = false) {
     const toast = document.getElementById('toast');
     toast.textContent = msg;
-    toast.style.background = isError ? '#ef4444' : '#10b981';
-    toast.classList.add('show');
+    toast.className = 'toast show' + (isError ? ' toast-err' : ' toast-ok');
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
   async function apiFetch(url, opts = {}) {
     const headers = { 'X-Requested-With': 'XMLHttpRequest', ...(opts.headers || {}) };
     if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-    const res = await fetch(url, { ...opts, credentials: 'include', headers });
+    const res = await fetch(SSO_BASE_URL + url, { ...opts, credentials: 'include', headers });
     if (res.status === 401 && accessToken) {
-      // попробуем обновить через refresh
-      const refreshRes = await fetch('/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      const refreshRes = await fetch(SSO_BASE_URL + '/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       if (refreshRes.ok) {
         const { accessToken: newToken } = await refreshRes.json();
         accessToken = newToken;
         localStorage.setItem('demo_access_token', accessToken);
         headers['Authorization'] = `Bearer ${accessToken}`;
-        return fetch(url, { ...opts, credentials: 'include', headers });
+        return fetch(SSO_BASE_URL + url, { ...opts, credentials: 'include', headers });
       } else {
         accessToken = null;
         localStorage.removeItem('demo_access_token');
@@ -203,6 +278,7 @@
     document.getElementById('userEmail').textContent = user.email || '—';
     document.getElementById('userId').textContent = user.userId;
     document.getElementById('userProvider').textContent = user.provider;
+    document.getElementById('userEmailDetail').textContent = user.email || '—';
     const avatarImg = document.getElementById('avatar');
     const fallback = document.getElementById('avatarFallback');
     if (user.avatar) {
@@ -214,6 +290,8 @@
       fallback.style.display = 'flex';
       fallback.textContent = (user.name?.[0] || '?').toUpperCase();
     }
+    document.getElementById('statusDot').className = 'status-dot';
+    document.getElementById('statusText').textContent = 'Сессия активна';
   }
 
   function showAuth() {
@@ -225,6 +303,8 @@
     document.getElementById('auth').style.display = 'none';
     accessToken = null;
     localStorage.removeItem('demo_access_token');
+    document.getElementById('statusDot').className = 'status-dot off';
+    document.getElementById('statusText').textContent = 'Не авторизован';
   }
 
   async function logout() {
@@ -238,20 +318,17 @@
   }
 
   function startLogin() {
-    // редиректим на страницу выбора провайдера (можно сразу на VK, но лучше дать выбор)
-    // Для демонстрации перенаправим на главную страницу SSO, которая имеет свой интерфейс.
-    // Но чтобы вернуться обратно на /demo, передадим redirect.
-    window.location.href = '/?redirect=/demo';
+    // Переходим на основной SSO-сайт с указанием куда вернуться
+    window.location.href = SSO_BASE_URL + '/?redirect=' + encodeURIComponent(window.location.href);
   }
 
-  // обработка возврата с токеном
+  // Обработка токена из редиректа
   const urlParams = new URLSearchParams(window.location.search);
   const token = urlParams.get('token');
   if (token) {
     accessToken = token;
     localStorage.setItem('demo_access_token', accessToken);
-    // чистим URL
-    history.replaceState(null, '', '/demo');
+    history.replaceState(null, '', window.location.pathname);
     loadProfile();
   } else {
     const stored = localStorage.getItem('demo_access_token');
