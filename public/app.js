@@ -22,7 +22,6 @@ const SK='sso_sessions', UK='sso_last_update';
 const getSessions  = () => { try{ return JSON.parse(localStorage.getItem(SK)||'{}'); }catch{ return {}; } };
 const saveSession  = (p,d) => { const s=getSessions(); s[p]={...d,ts:Date.now()}; localStorage.setItem(SK,JSON.stringify(s)); };
 const setLastUpdate= a => { localStorage.setItem(UK,JSON.stringify({time:Date.now(),action:a})); };
-const getLastUpdate= () => { try{ return JSON.parse(localStorage.getItem(UK)); }catch{ return null; } };
 
 // ── FETCH ────────────────────────────────────────────────────────────────────
 async function apiFetch(url, opts={}, ms=15000) {
@@ -99,10 +98,17 @@ async function tryRefresh() {
 // ── LOGOUT ────────────────────────────────────────────────────────────────────
 async function logout() {
   try { await apiFetch('/auth/logout', {method:'POST'}, 8000); } catch{}
-  localStorage.removeItem(SK);
+
+  // Удаляем только сессию ТЕКУЩЕГО провайдера
+  if (activeProvider) {
+    const s = getSessions();
+    delete s[activeProvider];
+    localStorage.setItem(SK, JSON.stringify(s));
+  }
+
   clearToken(); stopCountdown();
+  setLastUpdate(`Выход из ${PROVIDER_LABELS[activeProvider] || activeProvider}`);
   activeProvider = null;
-  setLastUpdate('Выход из аккаунта');
   show('login-section');
   renderSidebar();
 }
@@ -123,6 +129,9 @@ function renderUser(user) {
     img.onload =()=>{ document.getElementById('avatar-fallback').style.display='none'; img.style.display=''; };
     img.onerror=()=>{ img.style.display='none'; };
     img.src=user.avatar;
+  } else {
+    img.style.display='none';
+    document.getElementById('avatar-fallback').style.display='';
   }
   const badge=document.getElementById('provider-badge');
   badge.textContent=PROVIDER_LABELS[user.provider]||user.provider;
@@ -133,26 +142,15 @@ function renderUser(user) {
   show('user-section');
 }
 
-// ── SWITCH TO PROVIDER ──────────────────────────────────────────────────────
-function switchToProvider(provider) {
-  if (activeProvider === provider) {
-    fetchMe().then(u => {
-      if (u) renderUser(u);
-      else {
-        clearToken();
-        show('login-section');
-        renderSidebar();
-        showToast('Сессия истекла, войдите снова');
-      }
-    });
+// ── SHOW PROFILE FROM SIDEBAR ──────────────────────────────────────────────
+function showProfileFromSidebar(provider) {
+  const s = getSessions();
+  const sess = s[provider];
+  if (!sess) {
+    showToast('Нет сохранённых данных об этом аккаунте');
     return;
   }
-  showToast(`Войдите через ${PROVIDER_LABELS[provider] || provider} для переключения аккаунта`);
-  login(provider);
-}
 
-// ── RENDER USER FROM SESSION ──────────────────────────────────────────────
-function renderUserFromSession(sess, provider) {
   const name = sess.name || 'Пользователь';
   document.getElementById('user-name').textContent = name;
   document.getElementById('user-email').textContent = sess.email || 'Email не указан';
@@ -176,12 +174,12 @@ function renderUserFromSession(sess, provider) {
     fallback.style.display = '';
   }
 
+  // Показываем таймер только для активного аккаунта
   const sessionTimer = document.querySelector('.session-row');
   if (provider !== activeProvider) {
     if (sessionTimer) sessionTimer.style.display = 'none';
   } else {
     if (sessionTimer) sessionTimer.style.display = 'flex';
-    if (!_cd) startCountdown();
   }
 
   show('user-section');
@@ -238,8 +236,10 @@ function renderSidebar() {
     el.addEventListener('click',()=>{
       const p=el.dataset.p;
       if (el.dataset.connected==='true') {
-        switchToProvider(p);
+        // Показываем профиль из localStorage, не переключаем сессию
+        showProfileFromSidebar(p);
       } else {
+        // Не подключен — запускаем авторизацию
         const id={vk:'btn-vk',yandex:'btn-ya',mailru:'btn-mail'}[p];
         const btn=document.getElementById(id);
         if(btn&&!btn.disabled){ login(p); }
