@@ -43,7 +43,7 @@
       left: 24px;
       top: 50%;
       transform: translateY(-50%);
-      width: 200px;
+      width: 220px;
       background: var(--card);
       border: 1px solid var(--border);
       padding: 16px;
@@ -87,8 +87,12 @@
       border-color: var(--border);
     }
     .sb-item.active {
-      border-color: var(--vk);
-      background: #1a2332;
+      border-color: var(--ok);
+      background: #1a2a1f;
+    }
+    .sb-item.viewing {
+      border-color: var(--muted);
+      background: #222222;
     }
     .sb-icon {
       width: 24px;
@@ -390,6 +394,12 @@
     }
     .btn-logout:hover {
       background: #2a1a1a;
+    }
+    .btn-logout.back {
+      color: var(--muted);
+    }
+    .btn-logout.back:hover {
+      background: #222222;
     }
     .toast {
       position: fixed;
