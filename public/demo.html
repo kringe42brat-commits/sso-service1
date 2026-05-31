@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Демо-клиент SSO</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      border: 1px solid #e2e8f0;
+      width: 420px;
+      padding: 32px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    h2 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .sub {
+      color: #64748b;
+      font-size: 14px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      border-radius: 40px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid #cbd5e1;
+      background: white;
+      transition: all 0.1s;
+    }
+    .btn-primary {
+      background: #2787f5;
+      border-color: #2787f5;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #1e6bd3;
+    }
+    .btn-outline {
+      border-color: #e2e8f0;
+      background: #f8fafc;
+    }
+    .btn-outline:hover {
+      background: #f1f5f9;
+    }
+    .profile-card {
+      background: #f8fafc;
+      border-radius: 16px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid white;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 14px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .info-label {
+      color: #64748b;
+    }
+    .info-value {
+      font-weight: 500;
+    }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 20px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 40px;
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    .toast.show {
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <h2>🔐 Демо-клиент</h2>
+  <div class="sub">Пример интеграции с единым SSO</div>
+
+  <div id="unauth" style="display: block;">
+    <button class="btn btn-primary" id="loginBtn">Войти через SSO</button>
+    <p style="margin-top: 20px; font-size: 13px; color: #64748b;">Нажмите кнопку, чтобы войти через любой из провайдеров (VK, Яндекс, Mail.ru).</p>
+  </div>
+
+  <div id="auth" style="display: none;">
+    <div class="profile-card">
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px;">
+        <img id="avatar" class="avatar" src="" alt="avatar" style="display: none;">
+        <div id="avatarFallback" class="avatar" style="background: #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 24px;">👤</div>
+        <div>
+          <div id="userName" style="font-weight: 600; font-size: 18px;">—</div>
+          <div id="userEmail" style="font-size: 13px; color: #475569;">—</div>
+        </div>
+      </div>
+      <div class="info-row"><span class="info-label">ID</span><span class="info-value" id="userId">—</span></div>
+      <div class="info-row"><span class="info-label">Провайдер</span><span class="info-value" id="userProvider">—</span></div>
+    </div>
+    <div class="footer">
+      <button class="btn btn-outline" id="logoutBtn">Выйти</button>
+      <span style="font-size: 12px; color: #94a3b8;">Сессия активна</span>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+  const API_BASE = ''; // относительные пути
+  let accessToken = null;
+
+  function showToast(msg, isError = false) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.style.background = isError ? '#ef4444' : '#10b981';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  async function apiFetch(url, opts = {}) {
+    const headers = { 'X-Requested-With': 'XMLHttpRequest', ...(opts.headers || {}) };
+    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+    const res = await fetch(url, { ...opts, credentials: 'include', headers });
+    if (res.status === 401 && accessToken) {
+      // попробуем обновить через refresh
+      const refreshRes = await fetch('/auth/refresh', { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (refreshRes.ok) {
+        const { accessToken: newToken } = await refreshRes.json();
+        accessToken = newToken;
+        localStorage.setItem('demo_access_token', accessToken);
+        headers['Authorization'] = `Bearer ${accessToken}`;
+        return fetch(url, { ...opts, credentials: 'include', headers });
+      } else {
+        accessToken = null;
+        localStorage.removeItem('demo_access_token');
+        showToast('Сессия истекла, войдите снова', true);
+        showUnauth();
+        throw new Error('unauthorized');
+      }
+    }
+    return res;
+  }
+
+  async function loadProfile() {
+    try {
+      const res = await apiFetch('/auth/me');
+      if (!res.ok) throw new Error('not auth');
+      const user = await res.json();
+      renderProfile(user);
+      showAuth();
+    } catch (e) {
+      showUnauth();
+    }
+  }
+
+  function renderProfile(user) {
+    document.getElementById('userName').textContent = user.name || user.userId;
+    document.getElementById('userEmail').textContent = user.email || '—';
+    document.getElementById('userId').textContent = user.userId;
+    document.getElementById('userProvider').textContent = user.provider;
+    const avatarImg = document.getElementById('avatar');
+    const fallback = document.getElementById('avatarFallback');
+    if (user.avatar) {
+      avatarImg.src = user.avatar;
+      avatarImg.style.display = 'block';
+      fallback.style.display = 'none';
+    } else {
+      avatarImg.style.display = 'none';
+      fallback.style.display = 'flex';
+      fallback.textContent = (user.name?.[0] || '?').toUpperCase();
+    }
+  }
+
+  function showAuth() {
+    document.getElementById('unauth').style.display = 'none';
+    document.getElementById('auth').style.display = 'block';
+  }
+  function showUnauth() {
+    document.getElementById('unauth').style.display = 'block';
+    document.getElementById('auth').style.display = 'none';
+    accessToken = null;
+    localStorage.removeItem('demo_access_token');
+  }
+
+  async function logout() {
+    try {
+      await apiFetch('/auth/logout', { method: 'POST' });
+    } catch(e) {}
+    accessToken = null;
+    localStorage.removeItem('demo_access_token');
+    showUnauth();
+    showToast('Вы вышли из системы');
+  }
+
+  function startLogin() {
+    // редиректим на страницу выбора провайдера (можно сразу на VK, но лучше дать выбор)
+    // Для демонстрации перенаправим на главную страницу SSO, которая имеет свой интерфейс.
+    // Но чтобы вернуться обратно на /demo, передадим redirect.
+    window.location.href = '/?redirect=/demo';
+  }
+
+  // обработка возврата с токеном
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('token');
+  if (token) {
+    accessToken = token;
+    localStorage.setItem('demo_access_token', accessToken);
+    // чистим URL
+    history.replaceState(null, '', '/demo');
+    loadProfile();
+  } else {
+    const stored = localStorage.getItem('demo_access_token');
+    if (stored) {
+      accessToken = stored;
+      loadProfile();
+    } else {
+      showUnauth();
+    }
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', startLogin);
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ const cors       = require('cors');
 const crypto     = require('crypto');
 const rateLimit  = require('express-rate-limit');
 const helmet     = require('helmet');
+const path       = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -41,7 +42,6 @@ const ISS='sso-service', AUD='sso-client';
 const authLimiter    = rateLimit({ windowMs:15*60*1000, max:30, standardHeaders:true, legacyHeaders:false });
 const refreshLimiter = rateLimit({ windowMs:5*60*1000,  max:10, standardHeaders:true, legacyHeaders:false });
 
-// axios — отдельные инстансы для разных провайдеров
 const FORM_HEADERS = { 'Content-Type':'application/x-www-form-urlencoded' };
 const http = axios.create({ timeout:15000, headers:{ 'User-Agent':'SSO-Service/2.0' } });
 
@@ -81,22 +81,39 @@ function requireAuth(req,res,next){
 }
 function requireXHR(req,res,next){ if(req.headers['x-requested-with']!=='XMLHttpRequest') return res.status(403).json({error:'CSRF'}); next(); }
 
-// Вспомогательная функция: редирект с ошибкой + подробности в логах
 function redirectError(res, code, detail) {
   console.error(`[ERROR:${code}]`, detail);
   return res.redirect(`/?auth_error=${encodeURIComponent(code)}&detail=${encodeURIComponent(String(detail).slice(0,200))}`);
+}
+
+// ── HELPER для редиректа после успешного входа ──────────────────────────────
+function finalRedirect(res, accessToken, redirectPath) {
+  let target = redirectPath || process.env.FRONTEND_URL || '/';
+  // убедимся, что это относительный путь или разрешённый домен
+  if (target.startsWith('/')) {
+    // относительный – безопасно
+    res.redirect(`${target}?token=${accessToken}`);
+  } else {
+    // абсолютный – проверяем, что это наш фронтенд или доверенный
+    const allowed = [process.env.FRONTEND_URL, process.env.DEMO_URL].filter(Boolean);
+    let ok = false;
+    for (const a of allowed) {
+      if (target.startsWith(a)) { ok = true; break; }
+    }
+    if (ok) res.redirect(`${target}${target.includes('?')?'&':'?'}token=${accessToken}`);
+    else res.redirect(`/?token=${accessToken}`);
+  }
 }
 
 app.get('/health', (_,res)=>res.json({status:'ok',uptime:Math.floor(process.uptime()),providers:['vk','yandex','mailru']}));
 
 // ════════════════════════════════════════════════════════════════
 // VK ID
-// ИСПРАВЛЕНО: параметры токена идут в ТЕЛЕ запроса (urlencoded),
-// а не как query string
 // ════════════════════════════════════════════════════════════════
 app.get('/auth/vk', authLimiter, (req,res)=>{
   const verifier=genVerifier(), state=genState();
-  res.cookie('vk_auth', JSON.stringify({state,verifier}), AUTH_C);
+  const redirectTo = req.query.redirect || '/';
+  res.cookie('vk_auth', JSON.stringify({state,verifier,redirectTo}), AUTH_C);
   const u=new URL('https://id.vk.com/authorize');
   u.searchParams.set('client_id',            process.env.VK_CLIENT_ID);
   u.searchParams.set('redirect_uri',         process.env.VK_REDIRECT_URI);
@@ -109,17 +126,15 @@ app.get('/auth/vk', authLimiter, (req,res)=>{
 });
 
 app.get('/auth/vk/callback', async (req,res)=>{
-  const {code, state, device_id}=req.query;  // device_id обязателен для VK ID 2025+
+  const {code, state, device_id}=req.query;
   const raw=req.cookies.vk_auth;
   res.clearCookie('vk_auth',{path:'/'});
-
   if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code param');
   if (!raw) return redirectError(res,'invalid_state','no vk_auth cookie');
   let saved; try { saved=JSON.parse(raw); } catch(e) { return redirectError(res,'invalid_state','cookie parse error: '+e.message); }
   if (!state||state!==saved.state||!saved.verifier) return redirectError(res,'invalid_state',`state mismatch`);
-
+  const redirectPath = saved.redirectTo || '/';
   try {
-    // ИСПРАВЛЕНО: POST с телом urlencoded, не query params
     const tokenBody = new URLSearchParams({
       grant_type:    'authorization_code',
       code,
@@ -127,54 +142,30 @@ app.get('/auth/vk/callback', async (req,res)=>{
       client_secret: process.env.VK_CLIENT_SECRET,
       redirect_uri:  process.env.VK_REDIRECT_URI,
       code_verifier: saved.verifier,
-      ...(device_id ? { device_id } : {}),  // VK ID 2025+ требует device_id
+      ...(device_id ? { device_id } : {}),
     });
-
-    console.log('[VK] Exchanging code for token, device_id:', device_id||'none');
-    const {data:td} = await http.post(
-      'https://id.vk.com/oauth2/auth',
-      tokenBody.toString(),
-      { headers: FORM_HEADERS }
-    );
-    console.log('[VK] Token response keys:', Object.keys(td));
-
+    const {data:td} = await http.post('https://id.vk.com/oauth2/auth', tokenBody.toString(), { headers: FORM_HEADERS });
     if (!td.access_token) return redirectError(res,'vk_auth_failed','no access_token: '+JSON.stringify(td));
-
     const userId = td.user_id || td.userId;
     if (!userId) return redirectError(res,'vk_auth_failed','no user_id in token response');
-
     let name=null, avatar=null;
-
-    // Попытка 1: api.vk.com (стабильный)
     try {
-      console.log('[VK] Trying api.vk.com...');
       const {data:a}=await http.get('https://api.vk.com/method/users.get',{
         params:{ access_token:td.access_token, user_ids:userId, fields:'photo_200', v:'5.131' },
       });
       const u=a?.response?.[0];
-      if (u) { name=[u.first_name,u.last_name].filter(Boolean).join(' ')||null; avatar=u.photo_200||null; console.log('[VK] Got profile via api.vk.com'); }
+      if (u) { name=[u.first_name,u.last_name].filter(Boolean).join(' ')||null; avatar=u.photo_200||null; }
     } catch(e) { console.warn('[VK] api.vk.com failed:',e.message); }
-
-    // Попытка 2: id.vk.com/oauth2/user_info
     if (!name) {
       try {
-        console.log('[VK] Trying user_info endpoint...');
-        const {data:b}=await http.post(
-          'https://id.vk.com/oauth2/user_info',
-          new URLSearchParams({access_token:td.access_token, client_id:process.env.VK_CLIENT_ID}).toString(),
-          { headers: FORM_HEADERS }
-        );
+        const {data:b}=await http.post('https://id.vk.com/oauth2/user_info', new URLSearchParams({access_token:td.access_token, client_id:process.env.VK_CLIENT_ID}).toString(), { headers: FORM_HEADERS });
         const u=b?.user;
-        if (u) { name=[u.first_name,u.last_name].filter(Boolean).join(' ')||null; avatar=u.avatar||null; console.log('[VK] Got profile via user_info'); }
+        if (u) { name=[u.first_name,u.last_name].filter(Boolean).join(' ')||null; avatar=u.avatar||null; }
       } catch(e) { console.warn('[VK] user_info failed:',e.message); }
     }
-
-    // Попытка 3: только user_id + email (работает всегда)
-    console.log(`[VK] Final: userId=${userId}, name=${name}, hasAvatar=${!!avatar}`);
-
     const tokens=issueTokens({id:`vk_${userId}`, provider:'vk', email:td.email||null, name, avatar});
     res.cookie('refreshToken', tokens.refreshToken, REFRESH_C);
-    res.redirect(`/?vk_token=${tokens.accessToken}`);
+    finalRedirect(res, tokens.accessToken, redirectPath);
   } catch(e) {
     redirectError(res,'vk_auth_failed', e.response?.data ? JSON.stringify(e.response.data) : e.message);
   }
@@ -185,7 +176,8 @@ app.get('/auth/vk/callback', async (req,res)=>{
 // ════════════════════════════════════════════════════════════════
 app.get('/auth/yandex', authLimiter, (req,res)=>{
   const state=genState();
-  res.cookie('ya_auth', state, AUTH_C);
+  const redirectTo = req.query.redirect || '/';
+  res.cookie('ya_auth', JSON.stringify({state, redirectTo}), AUTH_C);
   const u=new URL('https://oauth.yandex.ru/authorize');
   u.searchParams.set('client_id',    process.env.YANDEX_CLIENT_ID);
   u.searchParams.set('redirect_uri', process.env.YANDEX_REDIRECT_URI);
@@ -196,18 +188,19 @@ app.get('/auth/yandex', authLimiter, (req,res)=>{
 
 app.get('/auth/yandex/callback', async (req,res)=>{
   const {code,state}=req.query;
-  const saved=req.cookies.ya_auth;
+  const raw=req.cookies.ya_auth;
   res.clearCookie('ya_auth',{path:'/'});
   if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code');
-  if (!saved||state!==saved)         return redirectError(res,'invalid_state','state mismatch');
+  if (!raw) return redirectError(res,'invalid_state','no ya_auth cookie');
+  let saved; try { saved=JSON.parse(raw); } catch(e) { return redirectError(res,'invalid_state','cookie parse'); }
+  if (!saved.state || state!==saved.state) return redirectError(res,'invalid_state','state mismatch');
+  const redirectPath = saved.redirectTo || '/';
   try {
     const tokenBody=new URLSearchParams({grant_type:'authorization_code',code,client_id:process.env.YANDEX_CLIENT_ID,client_secret:process.env.YANDEX_CLIENT_SECRET,redirect_uri:process.env.YANDEX_REDIRECT_URI});
     const {data:td}=await http.post('https://oauth.yandex.ru/token', tokenBody.toString(), {headers:FORM_HEADERS});
     if (!td.access_token) throw new Error('no access_token: '+JSON.stringify(td));
-
     const {data:ya}=await http.get('https://login.yandex.ru/info',{headers:{Authorization:`OAuth ${td.access_token}`},params:{format:'json'}});
     if (!ya.id) throw new Error('no user id');
-
     const tokens=issueTokens({
       id:`yandex_${ya.id}`, provider:'yandex',
       email: ya.default_email||ya.emails?.[0]||null,
@@ -215,17 +208,17 @@ app.get('/auth/yandex/callback', async (req,res)=>{
       avatar:ya.default_avatar_id?`https://avatars.yandex.net/get-yapic/${ya.default_avatar_id}/islands-200`:null,
     });
     res.cookie('refreshToken',tokens.refreshToken,REFRESH_C);
-    res.redirect(`/?ya_token=${tokens.accessToken}`);
+    finalRedirect(res, tokens.accessToken, redirectPath);
   } catch(e){ redirectError(res,'yandex_auth_failed', e.response?.data?JSON.stringify(e.response.data):e.message); }
 });
 
 // ════════════════════════════════════════════════════════════════
 // MAIL.RU
-// ИСПРАВЛЕНО: явный Content-Type + два варианта userinfo
 // ════════════════════════════════════════════════════════════════
 app.get('/auth/mailru', authLimiter, (req,res)=>{
   const state=genState();
-  res.cookie('mr_auth', state, AUTH_C);
+  const redirectTo = req.query.redirect || '/';
+  res.cookie('mr_auth', JSON.stringify({state, redirectTo}), AUTH_C);
   const u=new URL('https://connect.mail.ru/oauth/authorize');
   u.searchParams.set('client_id',    process.env.MAILRU_CLIENT_ID);
   u.searchParams.set('redirect_uri', process.env.MAILRU_REDIRECT_URI);
@@ -237,10 +230,13 @@ app.get('/auth/mailru', authLimiter, (req,res)=>{
 
 app.get('/auth/mailru/callback', async (req,res)=>{
   const {code,state}=req.query;
-  const saved=req.cookies.mr_auth;
+  const raw=req.cookies.mr_auth;
   res.clearCookie('mr_auth',{path:'/'});
   if (!code||typeof code!=='string') return redirectError(res,'invalid_code','no code');
-  if (!saved||state!==saved)         return redirectError(res,'invalid_state','state mismatch');
+  if (!raw) return redirectError(res,'invalid_state','no mr_auth cookie');
+  let saved; try { saved=JSON.parse(raw); } catch(e) { return redirectError(res,'invalid_state','cookie parse'); }
+  if (!saved.state || state!==saved.state) return redirectError(res,'invalid_state','state mismatch');
+  const redirectPath = saved.redirectTo || '/';
   try {
     const tokenBody=new URLSearchParams({
       grant_type:'authorization_code', code,
@@ -248,13 +244,8 @@ app.get('/auth/mailru/callback', async (req,res)=>{
       client_secret:process.env.MAILRU_CLIENT_SECRET,
       redirect_uri:process.env.MAILRU_REDIRECT_URI,
     });
-    console.log('[MR] Exchanging code for token...');
     const {data:td}=await http.post('https://connect.mail.ru/oauth/token', tokenBody.toString(), {headers:FORM_HEADERS});
-    console.log('[MR] Token keys:', Object.keys(td));
     if (!td.access_token) return redirectError(res,'mailru_auth_failed','no access_token: '+JSON.stringify(td));
-
-    // ИСПРАВЛЕНО: Mail.ru Platform API с MD5-подписью
-    // oauth.mail.ru/userinfo не принимает токен connect.mail.ru — используем appsmail.ru
     const apiParams = {
       app_id:      process.env.MAILRU_CLIENT_ID,
       method:      'users.getInfo',
@@ -263,12 +254,9 @@ app.get('/auth/mailru/callback', async (req,res)=>{
     };
     const sigStr = Object.keys(apiParams).sort().map(k=>`${k}=${apiParams[k]}`).join('') + process.env.MAILRU_CLIENT_SECRET;
     const sig = crypto.createHash('md5').update(sigStr).digest('hex');
-    console.log('[MR] Calling platform API...');
     const {data:muArr}=await http.get('https://www.appsmail.ru/platform/api', { params:{...apiParams, sig} });
     const mu = Array.isArray(muArr) ? muArr[0] : muArr;
-    console.log('[MR] Platform API response:', JSON.stringify(mu).slice(0,200));
     if (!mu?.uid && !mu?.email) return redirectError(res,'mailru_auth_failed','empty platform response: '+JSON.stringify(mu));
-
     const userId = mu.uid || td.x_mailru_vid || mu.id;
     const tokens=issueTokens({
       id:`mailru_${userId}`,
@@ -278,7 +266,7 @@ app.get('/auth/mailru/callback', async (req,res)=>{
       avatar: mu.pic_190 || mu.pic_big || mu.pic || null,
     });
     res.cookie('refreshToken',tokens.refreshToken,REFRESH_C);
-    res.redirect(`/?mr_token=${tokens.accessToken}`);
+    finalRedirect(res, tokens.accessToken, redirectPath);
   } catch(e){ redirectError(res,'mailru_auth_failed', e.response?.data?JSON.stringify(e.response.data):e.message); }
 });
 
@@ -306,6 +294,13 @@ app.post('/auth/logout', requireAuth, requireXHR, (req,res)=>{
   if (rt) { try{ const d=verifyRef(rt); if(d.jti) revokedJtis.add(d.jti); }catch{} }
   clearRt(res); res.json({message:'Выход выполнен'});
 });
+
+// ── ДЕМО-САЙТ (второй сайт) ─────────────────────────────────────────────────
+app.get('/demo', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'demo.html'));
+});
+// Статические файлы для демо (можно и встроить скрипт, но для порядка положим JS отдельно)
+app.use(express.static('public'));
 
 app.use((err,req,res,next)=>{ console.error('[ERR]',err.message); res.status(500).json({error:'Ошибка сервера'}); });
 
