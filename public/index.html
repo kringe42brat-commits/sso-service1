@@ -204,23 +204,16 @@
     .kb { font-size: 11px; font-family: monospace; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
 
     /* ── USER SECTION ────────────────────────── */
-    .avatar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-    .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); background: var(--bg); display: none; }
-    .avatar-fallback {
-      width: 40px; height: 40px; border-radius: 50%;
-      background: var(--bg); border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 15px; font-weight: 600; color: var(--muted); flex-shrink: 0;
-    }
     .user-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-    .user-email { font-size: 12px; color: var(--muted); }
+    .user-id-display { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
     .badge {
-      display: inline-flex; align-items: center;
+      display: inline-flex;
+      align-items: center;
       padding: 2px 8px; border-radius: 4px;
       font-size: 11px; font-weight: 500;
       background: rgba(255,255,255,.06);
       border: 1px solid var(--border);
-      margin-top: 6px;
+      margin-bottom: 16px;
     }
 
     .session-row {
@@ -351,15 +344,13 @@
 
   <!-- Profile -->
   <div id="user-section" style="display:none">
-    <div class="avatar-row">
-      <div id="avatar-fallback" class="avatar-fallback">?</div>
-      <img id="avatar-img" class="avatar" alt="Avatar">
-      <div>
-        <div class="user-name" id="user-name">—</div>
-        <div class="user-email" id="user-email">—</div>
-        <div class="badge" id="provider-badge">—</div>
-      </div>
+    <div class="card-header">
+      <div class="card-icon" id="provider-icon">👤</div>
+      <h1 id="user-name">—</h1>
+      <p class="subtitle" id="user-id-display">—</p>
     </div>
+
+    <div class="badge" id="provider-badge">—</div>
 
     <div class="session-row">
       <div class="session-left">
@@ -377,10 +368,6 @@
         <span class="info-val" id="user-id">—</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Email</span>
-        <span class="info-val" id="user-email-detail">—</span>
-      </div>
-      <div class="info-row">
         <span class="info-label">Провайдер</span>
         <span class="info-val" id="user-provider">—</span>
       </div>
@@ -392,7 +379,7 @@
         <polyline points="16,17 21,12 16,7"/>
         <line x1="21" y1="12" x2="9" y2="12"/>
       </svg>
-      Выйти из аккаунта
+      <span id="logout-text">Выйти</span>
     </button>
   </div>
 </div>
