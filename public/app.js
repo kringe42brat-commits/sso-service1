@@ -55,10 +55,15 @@ async function apiFetch(url, opts={}, ms=15000) {
   const tid  = setTimeout(() => ctrl.abort(), ms);
   try {
     return await fetch(url, {
-      ...opts, credentials:'include', signal:ctrl.signal,
+      ...opts, 
+      credentials: 'include', 
+      cache: 'no-store', // ФИКС: строго запрещаем кэшировать ответ в браузере
+      signal: ctrl.signal,
       headers: {
         ...(opts.headers||{}),
-        'X-Requested-With':'XMLHttpRequest',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
       },
     });
   } finally { clearTimeout(tid); }
@@ -105,7 +110,8 @@ function setButtonLoading(p, on) {
 async function login(p) {
   setButtonLoading(p, true);
   try {
-    const res = await apiFetch(`/auth/${p}`, {}, 25000);
+    // ФИКС: добавляем ?_t=timestamp, чтобы браузер 100% считал ссылку новой
+    const res = await apiFetch(`/auth/${p}?_t=${Date.now()}`, {}, 25000);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { authUrl } = await res.json();
     sessionStorage.setItem('sso_pending_provider', p);
