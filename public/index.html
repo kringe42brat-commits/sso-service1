@@ -41,7 +41,7 @@
       left: 24px;
       top: 50%;
       transform: translateY(-50%);
-      width: 220px;
+      width: 192px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -80,11 +80,9 @@
       border-radius: 6px;
       cursor: pointer;
       transition: background .15s;
-      position: relative;
     }
     .sb-item:hover { background: rgba(255,255,255,.05); }
     .sb-item.connected { background: rgba(255,255,255,.03); }
-    .sb-item.active { background: rgba(255,255,255,.08); border: 1px solid var(--border); }
 
     .sb-icon {
       width: 26px; height: 26px;
@@ -107,6 +105,7 @@
     .sb-name { font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sb-sub { font-size: 10px; color: var(--muted); margin-top: 1px; }
 
+    .sb-av { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; display: block; }
     .sb-av-init { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; }
 
     .sb-footer { border-top: 1px solid var(--border); padding-top: 10px; }
@@ -203,16 +202,23 @@
     .kb { font-size: 11px; font-family: monospace; background: rgba(255,255,255,.05); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
 
     /* ── USER SECTION ────────────────────────── */
+    .avatar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); background: var(--bg); display: none; }
+    .avatar-fallback {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 600; color: var(--muted); flex-shrink: 0;
+    }
     .user-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-    .user-id-display { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+    .user-email { font-size: 12px; color: var(--muted); }
     .badge {
-      display: inline-flex;
-      align-items: center;
+      display: inline-flex; align-items: center;
       padding: 2px 8px; border-radius: 4px;
       font-size: 11px; font-weight: 500;
       background: rgba(255,255,255,.06);
       border: 1px solid var(--border);
-      margin-bottom: 16px;
+      margin-top: 6px;
     }
 
     .session-row {
@@ -285,6 +291,46 @@
     .toast.toast-err { border-color: rgba(248,81,73,.4); color: var(--err); }
     .toast.toast-ok  { border-color: rgba(63,185,80,.4);  color: var(--ok); }
 
+
+    /* ── SIDEBAR MULTI-SESSION ─────────────────── */
+    .sb-count {
+      font-size:11px; font-weight:600;
+      color:var(--muted);
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--border);
+      border-radius:4px;
+      padding:1px 6px;
+    }
+    .sb-connected { cursor:pointer; }
+    .sb-empty { cursor:pointer; opacity:.7; }
+    .sb-empty:hover { opacity:1; }
+    .sb-active {
+      background:rgba(255,255,255,.07) !important;
+      border-left:2px solid var(--c, #fff);
+      padding-left:6px;
+    }
+    .sb-icon-empty { opacity:.45; }
+
+    .sb-exit {
+      flex-shrink:0;
+      width:20px; height:20px;
+      border:none; background:transparent;
+      color:var(--muted2);
+      border-radius:4px;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      opacity:0;
+      transition:opacity .15s, background .15s, color .15s;
+      margin-left:4px;
+    }
+    .sb-item:hover .sb-exit { opacity:1; }
+    .sb-exit:hover {
+      background:rgba(248,81,73,.15);
+      color:var(--err);
+    }
+
+    /* Logout label in btn */
+    .logout-label { flex:1; }
     /* ── RESPONSIVE ──────────────────────────── */
     @media(max-width: 720px) { #sidebar-panel { display: none; } }
   </style>
@@ -297,7 +343,7 @@
   <!-- Loading -->
   <div id="loading-screen">
     <div class="spinner"></div>
-    <div id="loading-text">Проверка сессий...</div>
+    <div id="loading-text">Проверка сессии...</div>
   </div>
 
   <!-- Login -->
@@ -343,13 +389,15 @@
 
   <!-- Profile -->
   <div id="user-section" style="display:none">
-    <div class="card-header">
-      <div class="card-icon" id="provider-icon">👤</div>
-      <h1 id="user-name">—</h1>
-      <p class="subtitle" id="user-id-display">—</p>
+    <div class="avatar-row">
+      <div id="avatar-fallback" class="avatar-fallback">?</div>
+      <img id="avatar-img" class="avatar" alt="Avatar">
+      <div>
+        <div class="user-name" id="user-name">—</div>
+        <div class="user-email" id="user-email">—</div>
+        <div class="badge" id="provider-badge">—</div>
+      </div>
     </div>
-
-    <div class="badge" id="provider-badge">—</div>
 
     <div class="session-row">
       <div class="session-left">
@@ -367,6 +415,10 @@
         <span class="info-val" id="user-id">—</span>
       </div>
       <div class="info-row">
+        <span class="info-label">Email</span>
+        <span class="info-val" id="user-email-detail">—</span>
+      </div>
+      <div class="info-row">
         <span class="info-label">Провайдер</span>
         <span class="info-val" id="user-provider">—</span>
       </div>
@@ -378,7 +430,7 @@
         <polyline points="16,17 21,12 16,7"/>
         <line x1="21" y1="12" x2="9" y2="12"/>
       </svg>
-      <span id="logout-text">Выйти</span>
+      <span class="logout-label">Выйти из аккаунта</span>
     </button>
   </div>
 </div>
