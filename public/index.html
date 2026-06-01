@@ -41,7 +41,7 @@
       left: 24px;
       top: 50%;
       transform: translateY(-50%);
-      width: 192px;
+      width: 220px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -80,9 +80,11 @@
       border-radius: 6px;
       cursor: pointer;
       transition: background .15s;
+      position: relative;
     }
     .sb-item:hover { background: rgba(255,255,255,.05); }
     .sb-item.connected { background: rgba(255,255,255,.03); }
+    .sb-item.active { background: rgba(255,255,255,.08); border: 1px solid var(--border); }
 
     .sb-icon {
       width: 26px; height: 26px;
@@ -303,7 +305,7 @@
   <!-- Loading -->
   <div id="loading-screen">
     <div class="spinner"></div>
-    <div id="loading-text">Проверка сессии...</div>
+    <div id="loading-text">Проверка сессий...</div>
   </div>
 
   <!-- Login -->

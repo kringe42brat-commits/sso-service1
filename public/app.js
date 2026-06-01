@@ -9,17 +9,43 @@ const ERROR_LABELS = {
   invalid_state:'Ошибка безопасности — попробуйте снова',
 };
 
-// ── TOKEN (in-memory only) ───────────────────
-let _token = null, _issuedAt = null;
-const TTL = 15 * 60;
-const getToken  = () => _token;
-const setToken  = t  => { _token = t; _issuedAt = Date.now(); };
-const clearToken= () => { _token = null; _issuedAt = null; };
+// ── PER-PROVIDER TOKENS ──────────────────────
+// Каждый провайдер имеет СВОЙ токен, СВОЮ сессию
+const SK = 'sso_sessions_v2';
 
-// ── SESSION HISTORY ──────────────────────────
-const SK = 'sso_sessions';
-const getSessions  = () => { try { return JSON.parse(localStorage.getItem(SK)||'{}'); } catch { return {}; } };
-const saveSession  = (p,d) => { const s=getSessions(); s[p]={...d,ts:Date.now()}; localStorage.setItem(SK,JSON.stringify(s)); };
+function getAllSessions() {
+  try { return JSON.parse(localStorage.getItem(SK) || '{}'); }
+  catch { return {}; }
+}
+function saveSession(provider, data) {
+  const s = getAllSessions();
+  s[provider] = { ...data, ts: Date.now(), active: true };
+  localStorage.setItem(SK, JSON.stringify(s));
+}
+function removeSession(provider) {
+  const s = getAllSessions();
+  delete s[provider];
+  localStorage.setItem(SK, JSON.stringify(s));
+}
+function getSession(provider) {
+  return getAllSessions()[provider] || null;
+}
+function hasAnySession() {
+  return Object.keys(getAllSessions()).length > 0;
+}
+function getActiveProvider() {
+  const s = getAllSessions();
+  // Возвращаем первый активный или null
+  for (const p of ['vk','yandex','mailru']) {
+    if (s[p] && s[p].active) return p;
+  }
+  return Object.keys(s)[0] || null;
+}
+function setActiveProvider(provider) {
+  const s = getAllSessions();
+  for (const p in s) s[p].active = (p === provider);
+  localStorage.setItem(SK, JSON.stringify(s));
+}
 
 // ── FETCH ────────────────────────────────────
 async function apiFetch(url, opts={}, ms=15000) {
@@ -31,7 +57,6 @@ async function apiFetch(url, opts={}, ms=15000) {
       headers: {
         ...(opts.headers||{}),
         'X-Requested-With':'XMLHttpRequest',
-        ...(getToken() ? {Authorization:`Bearer ${getToken()}`} : {}),
       },
     });
   } finally { clearTimeout(tid); }
@@ -75,6 +100,8 @@ async function login(p) {
     const res = await apiFetch(`/auth/${p}`, {}, 25000);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { authUrl } = await res.json();
+    // Запоминаем, что хотим войти через этот провайдер
+    sessionStorage.setItem('sso_pending_provider', p);
     window.location.href = authUrl;
   } catch(e) {
     setButtonLoading(p, false);
@@ -87,9 +114,8 @@ async function login(p) {
   }
 }
 
-// ── FETCH ME ─────────────────────────────────
+// ── FETCH ME (no token needed for server, sessions are cookie-based) ──
 async function fetchMe() {
-  if (!getToken()) return null;
   try {
     const r = await apiFetch('/auth/me', {}, 20000);
     return r.ok ? r.json() : null;
@@ -102,71 +128,135 @@ async function tryRefresh() {
     const r = await apiFetch('/auth/refresh', {method:'POST'}, 20000);
     if (!r.ok) return false;
     const { accessToken } = await r.json();
-    setToken(accessToken);
+    // Токен привязываем к текущему активному провайдеру
+    const provider = sessionStorage.getItem('sso_pending_provider') || getActiveProvider();
+    if (provider) {
+      const sess = getSession(provider) || {};
+      sess.token = accessToken;
+      sess.ts = Date.now();
+      saveSession(provider, sess);
+    }
     return true;
   } catch { return false; }
 }
 
-// ── LOGOUT ───────────────────────────────────
-async function logout() {
-  try { await apiFetch('/auth/logout', {method:'POST'}, 8000); } catch {}
-  localStorage.removeItem(SK);
-  clearToken();
+// ── LOGOUT SPECIFIC PROVIDER ─────────────────
+async function logoutProvider(provider) {
+  const sess = getSession(provider);
+  if (!sess) return;
+
+  // Если это текущий активный — отправляем запрос на сервер
+  const active = getActiveProvider();
+  if (active === provider) {
+    try { 
+      // Отправляем logout с токеном этого провайдера
+      await apiFetch('/auth/logout', {
+        method:'POST',
+        headers: sess.token ? { 'Authorization': `Bearer ${sess.token}` } : {}
+      }, 8000); 
+    } catch {}
+  }
+
+  removeSession(provider);
   stopCountdown();
-  renderSidebar();
-  show('login-section');
+
+  // Если удалили активный — переключаемся на другой
+  const remaining = getAllSessions();
+  const remainingProviders = Object.keys(remaining);
+
+  if (remainingProviders.length > 0) {
+    // Переключаемся на другой аккаунт
+    const nextProvider = remainingProviders[0];
+    setActiveProvider(nextProvider);
+    renderSidebar();
+    renderUserFromSession(nextProvider);
+    showToast(`Вышли из ${PROVIDER_LABELS[provider]}`, 'ok');
+  } else {
+    // Все вышли — показываем логин
+    renderSidebar();
+    show('login-section');
+    showToast(`Вышли из ${PROVIDER_LABELS[provider]}`, 'ok');
+  }
 }
 
-// ── RENDER USER ───────────────────────────────
-function renderUser(user) {
-  const name     = user.name || user.userId;
+// ── RENDER USER FROM SESSION ──────────────────
+function renderUserFromSession(provider) {
+  const sess = getSession(provider);
+  if (!sess) {
+    show('login-section');
+    return;
+  }
+
+  setActiveProvider(provider);
+
+  const name = sess.name || sess.userId || 'Пользователь';
   const initials = name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) || '?';
 
   document.getElementById('user-name').textContent         = name;
-  document.getElementById('user-email').textContent        = user.email || 'Email не указан';
-  document.getElementById('user-id').textContent           = user.userId;
-  document.getElementById('user-email-detail').textContent = user.email || '—';
-  document.getElementById('user-provider').textContent     = PROVIDER_LABELS[user.provider] || user.provider;
-  document.getElementById('avatar-fallback').textContent   = initials;
+  document.getElementById('user-email').textContent        = sess.email || 'Email не указан';
+  document.getElementById('user-id').textContent             = sess.userId || '—';
+  document.getElementById('user-email-detail').textContent = sess.email || '—';
+  document.getElementById('user-provider').textContent       = PROVIDER_LABELS[provider] || provider;
+  document.getElementById('avatar-fallback').textContent     = initials;
 
   const img = document.getElementById('avatar-img');
-  if (user.avatar) {
+  if (sess.avatar) {
     img.onload  = () => { document.getElementById('avatar-fallback').style.display='none'; img.style.display=''; };
     img.onerror = () => { img.style.display='none'; };
-    img.src = user.avatar;
+    img.src = sess.avatar;
+  } else {
+    img.style.display = 'none';
+    document.getElementById('avatar-fallback').style.display = '';
   }
 
   const badge = document.getElementById('provider-badge');
-  badge.textContent = PROVIDER_LABELS[user.provider] || user.provider;
+  badge.textContent = PROVIDER_LABELS[provider] || provider;
 
-  saveSession(user.provider, { name, email:user.email, avatar:user.avatar });
-  renderSidebar();
-  startCountdown();
+  // Обновляем кнопку выхода — теперь выходим из конкретного провайдера
+  const logoutBtn = document.getElementById('btn-logout');
+  logoutBtn.onclick = () => logoutProvider(provider);
+  logoutBtn.innerHTML = `
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16,17 21,12 16,7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    Выйти из ${PROVIDER_LABELS[provider]}
+  `;
+
+  startCountdown(provider);
   show('user-section');
-
-  // Если пришли со страницы-клиента — вернуться туда
-  const returnUrl = sessionStorage.getItem('sso_return');
-  if (returnUrl) {
-    sessionStorage.removeItem('sso_return');
-    // Небольшая пауза чтобы успел установиться refresh cookie
-    setTimeout(() => { window.location.href = returnUrl; }, 400);
-  }
+  renderSidebar();
 }
 
 // ── COUNTDOWN ────────────────────────────────
 let _cd = null;
-function startCountdown() {
+function startCountdown(provider) {
   stopCountdown();
+  const sess = getSession(provider);
+  if (!sess) return;
+
   const el = document.getElementById('session-countdown');
   if (!el) return;
+
+  const TTL = 15 * 60;
+  const issuedAt = sess.ts || Date.now();
+
   const tick = () => {
-    const elapsed = _issuedAt ? Math.floor((Date.now()-_issuedAt)/1000) : TTL;
-    const left    = Math.max(0, TTL - elapsed);
+    const elapsed = Math.floor((Date.now() - issuedAt) / 1000);
+    const left = Math.max(0, TTL - elapsed);
     const m = Math.floor(left/60).toString().padStart(2,'0');
     const s = (left%60).toString().padStart(2,'0');
     el.textContent = `${m}:${s}`;
     el.style.color = left<120 ? 'var(--err)' : left<300 ? '#d29922' : 'var(--ok)';
-    if (left === 0) tryRefresh().then(ok => { if (ok) _issuedAt=Date.now(); });
+    if (left === 0) {
+      tryRefresh().then(ok => { 
+        if (ok) { 
+          const s = getAllSessions();
+          if (s[provider]) { s[provider].ts = Date.now(); localStorage.setItem(SK, JSON.stringify(s)); }
+        }
+      });
+    }
   };
   tick();
   _cd = setInterval(tick, 1000);
@@ -193,22 +283,25 @@ function timeAgo(ts) {
 function renderSidebar() {
   const panel = document.getElementById('sidebar-panel');
   if (!panel) return;
-  const s = getSessions();
+  const s = getAllSessions();
+  const activeProvider = getActiveProvider();
   const count = ORDER.filter(p => s[p]).length;
 
   panel.innerHTML = `
     <div class="sb-header">
-      <span class="sb-title">Аккаунты</span>
-      <span class="sb-hint">1 2 3</span>
+      <span class="sb-title">Мои аккаунты</span>
+      <span class="sb-hint">${count}/3</span>
     </div>
     <div class="sb-list">
       ${ORDER.map((p,i) => {
         const sess = s[p], c = COLORS[p];
-        return `<div class="sb-item${sess?' connected':''}" data-p="${p}" style="--c:${c}">
+        const isActive = p === activeProvider;
+        const isConnected = !!sess;
+        return `<div class="sb-item${isConnected?' connected':''}${isActive?' active':''}" data-p="${p}" style="--c:${c}">
           <div class="sb-icon" style="--c:${c}">${ICONS[p]}${sess?'<span class="sb-dot"></span>':''}</div>
           <div class="sb-info">
             <div class="sb-name">${PROVIDER_LABELS[p]}</div>
-            <div class="sb-sub" style="color:${sess?'var(--ok)':'var(--muted2)'}">${sess?timeAgo(sess.ts):`клавиша ${i+1}`}</div>
+            <div class="sb-sub" style="color:${sess?'var(--ok)':'var(--muted2)'}">${sess?(sess.name || 'Подключён'):'не подключён'}</div>
           </div>
           ${sess&&sess.avatar
             ? `<img class="sb-av" src="${sess.avatar}" onerror="this.style.display='none'" alt="">`
@@ -227,14 +320,12 @@ function renderSidebar() {
   panel.querySelectorAll('.sb-item').forEach(el => {
     el.addEventListener('click', () => {
       const p = el.dataset.p;
-      if (el.classList.contains('connected')) {
-        // Подключён — переключаемся или обновляем
-        if (getToken()) {
-          fetchMe().then(u => { if (u) renderUser(u); });
-        } else {
-          login(p);
-        }
+      const sess = getSession(p);
+      if (sess) {
+        // Показываем профиль этого аккаунта
+        renderUserFromSession(p);
       } else {
+        // Не подключён — входим
         login(p);
       }
     });
@@ -245,27 +336,103 @@ function renderSidebar() {
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   const map = {'1':'vk','2':'yandex','3':'mailru'};
-  if (map[e.key] && document.getElementById('login-section').style.display !== 'none') login(map[e.key]);
-  if (e.key === 'Escape' && document.getElementById('user-section').style.display !== 'none') logout();
+
+  // Если нажали цифру — переключаемся на этот аккаунт или входим
+  if (map[e.key]) {
+    const p = map[e.key];
+    const sess = getSession(p);
+    if (sess) {
+      renderUserFromSession(p);
+    } else if (document.getElementById('login-section').style.display !== 'none') {
+      login(p);
+    }
+  }
+
+  // Escape — выход из текущего активного аккаунта
+  if (e.key === 'Escape' && document.getElementById('user-section').style.display !== 'none') {
+    const active = getActiveProvider();
+    if (active) logoutProvider(active);
+  }
 });
 
-// ── CHECK AUTH ────────────────────────────────
+// ── CHECK AUTH ON LOAD ───────────────────────
 async function checkAuth() {
   const wt = setTimeout(() => setLoadingMsg('Сервер запускается, подождите...'), 4000);
+
   try {
-    if (getToken()) {
-      const u = await fetchMe();
-      if (u) { clearTimeout(wt); renderUser(u); return; }
-      clearToken();
+    // Сначала проверяем, есть ли сохранённые сессии
+    const sessions = getAllSessions();
+
+    if (hasAnySession()) {
+      // Пытаемся обновить токен
+      const ok = await tryRefresh();
+      if (ok) {
+        const active = getActiveProvider();
+        if (active) {
+          clearTimeout(wt);
+          renderUserFromSession(active);
+          return;
+        }
+      }
     }
-    const ok = await tryRefresh();
-    if (ok) {
-      const u = await fetchMe();
-      if (u) { clearTimeout(wt); renderUser(u); return; }
+
+    // Проверяем, есть ли токен в URL (после OAuth редиректа)
+    const qp = new URLSearchParams(window.location.search);
+    const token = qp.get('vk_token') || qp.get('ya_token') || qp.get('mr_token') || qp.get('token');
+
+    if (token) {
+      // Определяем провайдер из URL
+      let provider = sessionStorage.getItem('sso_pending_provider');
+      if (!provider) {
+        if (qp.get('vk_token')) provider = 'vk';
+        else if (qp.get('ya_token')) provider = 'yandex';
+        else if (qp.get('mr_token')) provider = 'mailru';
+      }
+
+      if (provider) {
+        setLoadingMsg('Загружаем профиль...');
+
+        // Сохраняем токен для этого провайдера
+        const sess = getSession(provider) || {};
+        sess.token = token;
+        sess.ts = Date.now();
+
+        // Пробуем получить данные пользователя
+        for (let i = 0; i < 3; i++) {
+          if (i > 0) { setLoadingMsg(`Повтор ${i}...`); await new Promise(r=>setTimeout(r,2000)); }
+
+          try {
+            const r = await apiFetch('/auth/me', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            }, 20000);
+            if (r.ok) {
+              const u = await r.json();
+              sess.name = u.name || u.userId;
+              sess.email = u.email;
+              sess.avatar = u.avatar;
+              sess.userId = u.userId;
+              sess.provider = u.provider;
+              saveSession(provider, sess);
+              clearTimeout(wt);
+              renderUserFromSession(provider);
+              return;
+            }
+          } catch {}
+        }
+      }
     }
   } catch {}
+
   clearTimeout(wt);
-  show('login-section');
+
+  // Если есть хоть одна сессия — показываем первую
+  const sessions = getAllSessions();
+  if (Object.keys(sessions).length > 0) {
+    const first = Object.keys(sessions)[0];
+    renderUserFromSession(first);
+  } else {
+    show('login-section');
+  }
 }
 
 // ── INIT ─────────────────────────────────────
@@ -273,38 +440,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-vk')?.addEventListener('click',   () => login('vk'));
   document.getElementById('btn-ya')?.addEventListener('click',   () => login('yandex'));
   document.getElementById('btn-mail')?.addEventListener('click', () => login('mailru'));
-  document.getElementById('btn-logout')?.addEventListener('click', logout);
 
   renderSidebar();
 
   // Читаем токен/ошибку из URL
   const qp = new URLSearchParams(window.location.search);
-  const hp = new URLSearchParams(window.location.hash.slice(1));
-  history.replaceState(null, '', window.location.pathname);
-
-  const token = qp.get('vk_token') || qp.get('ya_token') || qp.get('mr_token') || qp.get('token') || hp.get('token');
-  const error = hp.get('error') || qp.get('error') || qp.get('auth_error');
+  const error = qp.get('error') || qp.get('auth_error');
 
   if (error) {
     showToast(ERROR_LABELS[error] || `Ошибка: ${error}`, 'err');
+    history.replaceState(null, '', window.location.pathname);
     show('login-section');
-    return;
-  }
-
-  if (token) {
-    setToken(token);
-    setLoadingMsg('Загружаем профиль...');
-    async function tryLoad(attempts=3) {
-      for (let i=0; i<attempts; i++) {
-        if (i>0) { setLoadingMsg(`Повтор ${i}...`); await new Promise(r=>setTimeout(r,2000)); }
-        const u = await fetchMe();
-        if (u) { renderUser(u); return; }
-      }
-      clearToken();
-      show('login-section');
-      showToast('Не удалось загрузить профиль', 'err');
-    }
-    tryLoad();
     return;
   }
 
