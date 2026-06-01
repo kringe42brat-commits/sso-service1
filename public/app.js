@@ -11,7 +11,7 @@ const ERROR_LABELS = {
 };
 
 // ── PER-PROVIDER SESSIONS ──────────────────────
-const SK = 'sso_sessions_v3';
+const SK = 'sso_sessions_v6';
 
 function getAllSessions() {
   try { return JSON.parse(localStorage.getItem(SK) || '{}'); }
@@ -19,19 +19,12 @@ function getAllSessions() {
 }
 function saveSession(provider, data) {
   const s = getAllSessions();
-  // Mark all as inactive first
-  for (const p in s) s[p].active = false;
-  s[provider] = { ...data, ts: Date.now(), active: true };
+  s[provider] = { ...data, ts: Date.now() };
   localStorage.setItem(SK, JSON.stringify(s));
 }
 function removeSession(provider) {
   const s = getAllSessions();
   delete s[provider];
-  // If we removed the active one, activate another
-  const remaining = Object.keys(s);
-  if (remaining.length > 0) {
-    s[remaining[0]].active = true;
-  }
   localStorage.setItem(SK, JSON.stringify(s));
 }
 function getSession(provider) {
@@ -42,9 +35,6 @@ function hasAnySession() {
 }
 function getActiveProvider() {
   const s = getAllSessions();
-  for (const p of ['vk','yandex','mailru']) {
-    if (s[p] && s[p].active) return p;
-  }
   const keys = Object.keys(s);
   return keys.length > 0 ? keys[0] : null;
 }
@@ -55,15 +45,10 @@ async function apiFetch(url, opts={}, ms=15000) {
   const tid  = setTimeout(() => ctrl.abort(), ms);
   try {
     return await fetch(url, {
-      ...opts, 
-      credentials: 'include', 
-      cache: 'no-store', // ФИКС: строго запрещаем кэшировать ответ в браузере
-      signal: ctrl.signal,
+      ...opts, credentials:'include', signal:ctrl.signal,
       headers: {
         ...(opts.headers||{}),
-        'X-Requested-With': 'XMLHttpRequest',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache'
+        'X-Requested-With':'XMLHttpRequest',
       },
     });
   } finally { clearTimeout(tid); }
@@ -108,20 +93,28 @@ function setButtonLoading(p, on) {
 
 // ── LOGIN ─────────────────────────────────────
 async function login(p) {
+  console.log(`[LOGIN] Starting login for ${p}`);
+  // Always clear pending state before new login
+  sessionStorage.removeItem('sso_pending_provider');
+  sessionStorage.setItem('sso_pending_provider', p);
+
   setButtonLoading(p, true);
   try {
-    // ФИКС: добавляем ?_t=timestamp, чтобы браузер 100% считал ссылку новой
-    const res = await apiFetch(`/auth/${p}?_t=${Date.now()}`, {}, 25000);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await apiFetch(`/auth/${p}`, {}, 25000);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errText}`);
+    }
     const { authUrl } = await res.json();
-    sessionStorage.setItem('sso_pending_provider', p);
+    console.log(`[LOGIN] Got authUrl, redirecting...`);
     window.location.href = authUrl;
   } catch(e) {
+    console.error(`[LOGIN] Error:`, e);
     setButtonLoading(p, false);
     showToast(
       e.name === 'AbortError'
         ? 'Сервер не отвечает — подождите ~30 сек'
-        : 'Ошибка соединения',
+        : 'Ошибка соединения: ' + e.message,
       'err'
     );
   }
@@ -131,19 +124,36 @@ async function login(p) {
 async function fetchMe(token) {
   try {
     const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    console.log(`[FETCHME] Calling /auth/me`);
     const r = await apiFetch('/auth/me', { headers }, 20000);
-    return r.ok ? r.json() : null;
-  } catch { return null; }
+    console.log(`[FETCHME] Response status: ${r.status}`);
+    if (!r.ok) {
+      const errText = await r.text();
+      console.log(`[FETCHME] Error response: ${errText}`);
+      return null;
+    }
+    const data = await r.json();
+    console.log(`[FETCHME] Success:`, data);
+    return data;
+  } catch(e) {
+    console.error(`[FETCHME] Error:`, e);
+    return null;
+  }
 }
 
 // ── REFRESH ───────────────────────────────────
 async function tryRefresh(provider) {
   try {
-    const sess = getSession(provider);
-    const headers = sess && sess.token ? { 'Authorization': `Bearer ${sess.token}` } : {};
-    const r = await apiFetch('/auth/refresh', {method:'POST', headers}, 20000);
-    if (!r.ok) return false;
+    console.log(`[REFRESH] Trying refresh for ${provider}`);
+    const r = await apiFetch('/auth/refresh', {method:'POST'}, 20000);
+    console.log(`[REFRESH] Response status: ${r.status}`);
+    if (!r.ok) {
+      const errText = await r.text();
+      console.log(`[REFRESH] Error: ${errText}`);
+      return false;
+    }
     const { accessToken } = await r.json();
+    console.log(`[REFRESH] Got new token for ${provider}`);
     const s = getAllSessions();
     if (s[provider]) {
       s[provider].token = accessToken;
@@ -151,24 +161,34 @@ async function tryRefresh(provider) {
       localStorage.setItem(SK, JSON.stringify(s));
     }
     return true;
-  } catch { return false; }
+  } catch(e) {
+    console.error(`[REFRESH] Error:`, e);
+    return false;
+  }
 }
 
 // ── LOGOUT SPECIFIC PROVIDER ─────────────────
 async function logoutProvider(provider) {
+  console.log(`[LOGOUT] Logging out from ${provider}`);
   const sess = getSession(provider);
-  if (!sess) return;
 
-  // Send logout to server with the token
-  if (sess.token) {
-    try { 
-      await apiFetch('/auth/logout', {
-        method:'POST',
-        headers: { 'Authorization': `Bearer ${sess.token}` }
-      }, 8000); 
-    } catch {}
+  // Send logout to server - token might be expired, but server handles this
+  try { 
+    console.log(`[LOGOUT] Sending logout request`);
+    const headers = (sess && sess.token) ? { 'Authorization': `Bearer ${sess.token}` } : {};
+    const r = await apiFetch('/auth/logout', {
+      method:'POST',
+      headers: headers
+    }, 8000); 
+    console.log(`[LOGOUT] Server response: ${r.status}`);
+    const respText = await r.text();
+    console.log(`[LOGOUT] Response body:`, respText);
+  } catch(e) {
+    console.error(`[LOGOUT] Server logout error:`, e);
   }
 
+  // ALWAYS clear client-side session regardless of server response
+  console.log(`[LOGOUT] Clearing client session for ${provider}`);
   removeSession(provider);
   stopCountdown();
 
@@ -177,9 +197,11 @@ async function logoutProvider(provider) {
 
   if (remainingProviders.length > 0) {
     const nextProvider = remainingProviders[0];
+    console.log(`[LOGOUT] Switching to ${nextProvider}`);
     renderUserFromSession(nextProvider);
     showToast(`Вышли из ${PROVIDER_LABELS[provider]}`, 'ok');
   } else {
+    console.log(`[LOGOUT] No remaining sessions, showing login`);
     renderSidebar();
     show('login-section');
     showToast(`Вышли из ${PROVIDER_LABELS[provider]}`, 'ok');
@@ -188,17 +210,13 @@ async function logoutProvider(provider) {
 
 // ── RENDER USER FROM SESSION ──────────────────
 function renderUserFromSession(provider) {
+  console.log(`[RENDER] Rendering user for ${provider}`);
   const sess = getSession(provider);
   if (!sess) {
+    console.log(`[RENDER] No session for ${provider}, showing login`);
     show('login-section');
     return;
   }
-
-  // Mark this provider as active
-  const all = getAllSessions();
-  for (const p in all) all[p].active = false;
-  if (all[provider]) all[provider].active = true;
-  localStorage.setItem(SK, JSON.stringify(all));
 
   const name = sess.name || sess.userId || 'Пользователь';
 
@@ -345,6 +363,8 @@ async function handleOAuthCallback() {
   const token = qp.get('vk_token') || qp.get('ya_token') || qp.get('mr_token');
   const error = qp.get('error') || qp.get('auth_error');
 
+  console.log(`[OAUTH] Checking URL params. Token present: ${!!token}, Error: ${error || 'none'}`);
+
   if (error) {
     showToast(ERROR_LABELS[error] || `Ошибка: ${error}`, 'err');
     history.replaceState(null, '', window.location.pathname);
@@ -352,7 +372,10 @@ async function handleOAuthCallback() {
     return false;
   }
 
-  if (!token) return false;
+  if (!token) {
+    console.log(`[OAUTH] No token in URL`);
+    return false;
+  }
 
   // Determine provider from URL param
   let provider = null;
@@ -366,7 +389,9 @@ async function handleOAuthCallback() {
     return false;
   }
 
-  // Clean URL
+  console.log(`[OAUTH] Got token for ${provider}`);
+
+  // Clean URL immediately
   history.replaceState(null, '', window.location.pathname);
 
   setLoadingMsg('Загружаем профиль...');
@@ -379,8 +404,11 @@ async function handleOAuthCallback() {
       await new Promise(r => setTimeout(r, 1500)); 
     }
 
+    console.log(`[OAUTH] Attempt ${i+1} to fetch user data`);
     const userData = await fetchMe(token);
     if (userData) {
+      console.log(`[OAUTH] Got user data:`, userData);
+
       // Save session for this provider
       saveSession(provider, {
         token: token,
@@ -390,22 +418,31 @@ async function handleOAuthCallback() {
         ts: Date.now()
       });
 
+      console.log(`[OAUTH] Session saved for ${provider}`);
       renderUserFromSession(provider);
       showToast(`Вход через ${PROVIDER_LABELS[provider]} выполнен`, 'ok');
       return true;
     }
+
+    console.log(`[OAUTH] Attempt ${i+1} failed`);
   }
 
-  showToast('Не удалось загрузить профиль', 'err');
+  console.log(`[OAUTH] All attempts failed`);
+  showToast('Не удалось загрузить профиль. Попробуйте войти снова.', 'err');
   show('login-section');
   return false;
 }
 
 // ── CHECK AUTH ON LOAD ───────────────────────
 async function checkAuth() {
+  console.log(`[INIT] Checking auth state...`);
+
   // First, check if we're returning from OAuth
   const handled = await handleOAuthCallback();
-  if (handled) return;
+  if (handled) {
+    console.log(`[INIT] OAuth callback handled successfully`);
+    return;
+  }
 
   const wt = setTimeout(() => setLoadingMsg('Сервер запускается, подождите...'), 4000);
 
@@ -413,76 +450,61 @@ async function checkAuth() {
     // Check if we have any saved sessions
     const sessions = getAllSessions();
     const providers = Object.keys(sessions);
+    console.log(`[INIT] Found sessions:`, providers);
 
     if (providers.length > 0) {
-      // Try to refresh the active one
-      const active = getActiveProvider();
-      if (active) {
-        const ok = await tryRefresh(active);
+      // Try to refresh each session
+      for (const provider of providers) {
+        console.log(`[INIT] Trying refresh for ${provider}`);
+        const ok = await tryRefresh(provider);
         if (ok) {
-          // Refresh worked, fetch user data
-          const sess = getSession(active);
-          const userData = await fetchMe(sess.token);
-          if (userData) {
-            // Update session with fresh data
-            const s = getAllSessions();
-            s[active].name = userData.name || userData.userId;
-            s[active].userId = userData.userId;
-            s[active].provider = userData.provider;
-            s[active].ts = Date.now();
-            localStorage.setItem(SK, JSON.stringify(s));
+          console.log(`[INIT] Refresh successful for ${provider}`);
+          const sess = getSession(provider);
+          if (sess) {
+            const userData = await fetchMe(sess.token);
+            if (userData) {
+              // Update session with fresh data
+              saveSession(provider, {
+                token: sess.token,
+                name: userData.name || userData.userId,
+                userId: userData.userId,
+                provider: userData.provider,
+                ts: Date.now()
+              });
 
-            clearTimeout(wt);
-            renderUserFromSession(active);
-            return;
-          }
-        }
-      }
-
-      // If refresh failed but we have other sessions, try them
-      for (const p of providers) {
-        if (p === active) continue;
-        const ok = await tryRefresh(p);
-        if (ok) {
-          const sess = getSession(p);
-          const userData = await fetchMe(sess.token);
-          if (userData) {
-            const s = getAllSessions();
-            s[p].name = userData.name || userData.userId;
-            s[p].userId = userData.userId;
-            s[p].provider = userData.provider;
-            s[p].ts = Date.now();
-            s[p].active = true;
-            for (const other in s) {
-              if (other !== p) s[other].active = false;
+              clearTimeout(wt);
+              renderUserFromSession(provider);
+              return;
             }
-            localStorage.setItem(SK, JSON.stringify(s));
-
-            clearTimeout(wt);
-            renderUserFromSession(p);
-            return;
           }
+        } else {
+          console.log(`[INIT] Refresh failed for ${provider}, removing session`);
+          removeSession(provider);
         }
       }
     }
   } catch (e) {
-    console.error('Auth check error:', e);
+    console.error(`[INIT] Auth check error:`, e);
   }
 
   clearTimeout(wt);
 
-  // If we have sessions but couldn't refresh, show the first one anyway
+  // If we still have sessions after failed refreshes, show the first one
   const sessions = getAllSessions();
   if (Object.keys(sessions).length > 0) {
     const first = Object.keys(sessions)[0];
+    console.log(`[INIT] Showing first available session: ${first}`);
     renderUserFromSession(first);
   } else {
+    console.log(`[INIT] No sessions, showing login`);
     show('login-section');
   }
 }
 
 // ── INIT ─────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  console.log(`[INIT] DOM loaded, initializing app`);
+
   document.getElementById('btn-vk')?.addEventListener('click',   () => login('vk'));
   document.getElementById('btn-ya')?.addEventListener('click',   () => login('yandex'));
   document.getElementById('btn-mail')?.addEventListener('click', () => login('mailru'));
