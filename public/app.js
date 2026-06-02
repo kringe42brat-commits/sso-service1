@@ -207,7 +207,12 @@ async function logoutProvider(provider) {
 
 // ── RENDER USER FROM SESSION ──────────────────
 function renderUserFromSession(provider) {
-  console.log(`[RENDER] Rendering user for ${provider}`);
+  console.log('[RENDER] provider =', provider);
+  console.log('[RENDER] session =', getSession(provider));
+
+  const userSection = document.getElementById('user-section');
+  console.log('[RENDER] user-section =', userSection);
+
   const sess = getSession(provider);
   if (!sess) {
     console.log(`[RENDER] No session for ${provider}, showing login`);
@@ -217,22 +222,27 @@ function renderUserFromSession(provider) {
 
   const name = sess.name || sess.userId || 'Пользователь';
 
-document.getElementById('user-name').textContent = name;
-document.getElementById('user-email').textContent = sess.email || '—';
-document.getElementById('user-email-detail').textContent = sess.email || '—';
-document.getElementById('user-id').textContent = sess.userId || '—';
-document.getElementById('user-provider').textContent =
-  PROVIDER_LABELS[provider] || provider;
-document.getElementById('provider-badge').textContent =
-  PROVIDER_LABELS[provider] || provider;
+  document.getElementById('user-name').textContent = name;
+  document.getElementById('user-email').textContent = sess.email || '—';
+  document.getElementById('user-email-detail').textContent = sess.email || '—';
+  document.getElementById('user-id').textContent = sess.userId || '—';
+  document.getElementById('user-provider').textContent =
+    PROVIDER_LABELS[provider] || provider;
+  document.getElementById('provider-badge').textContent =
+    PROVIDER_LABELS[provider] || provider;
 
-const logoutBtn = document.getElementById('btn-logout');
-logoutBtn.onclick = () => logoutProvider(provider);
+  const logoutBtn = document.getElementById('btn-logout');
+  logoutBtn.onclick = () => logoutProvider(provider);
 
-const logoutLabel = document.querySelector('.logout-label');
-if (logoutLabel) {
-  logoutLabel.textContent =
-    `Выйти из ${PROVIDER_LABELS[provider]}`;
+  const logoutLabel = document.querySelector('.logout-label');
+  if (logoutLabel) {
+    logoutLabel.textContent =
+      `Выйти из ${PROVIDER_LABELS[provider]}`;
+  }
+
+  startCountdown(provider);
+  show('user-section');
+  renderSidebar();
 }
 
   startCountdown(provider);
