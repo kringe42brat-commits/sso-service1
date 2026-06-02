@@ -217,18 +217,23 @@ function renderUserFromSession(provider) {
 
   const name = sess.name || sess.userId || 'Пользователь';
 
-  document.getElementById('user-name').textContent = name;
-  document.getElementById('user-email').textContent = sess.email || '—';
-  document.getElementById('user-email-detail').textContent = sess.email || '—';
-  document.getElementById('user-id-display').textContent = sess.userId || '—';
-  document.getElementById('user-id').textContent = sess.userId || '—';
-  document.getElementById('user-provider').textContent = PROVIDER_LABELS[provider] || provider;
-  document.getElementById('provider-badge').textContent = PROVIDER_LABELS[provider] || provider;
-  document.getElementById('provider-icon').textContent = PROVIDER_ICONS[provider] || '👤';
+document.getElementById('user-name').textContent = name;
+document.getElementById('user-email').textContent = sess.email || '—';
+document.getElementById('user-email-detail').textContent = sess.email || '—';
+document.getElementById('user-id').textContent = sess.userId || '—';
+document.getElementById('user-provider').textContent =
+  PROVIDER_LABELS[provider] || provider;
+document.getElementById('provider-badge').textContent =
+  PROVIDER_LABELS[provider] || provider;
 
-  const logoutBtn = document.getElementById('btn-logout');
-  logoutBtn.onclick = () => logoutProvider(provider);
-  document.getElementById('logout-text').textContent = `Выйти из ${PROVIDER_LABELS[provider]}`;
+const logoutBtn = document.getElementById('btn-logout');
+logoutBtn.onclick = () => logoutProvider(provider);
+
+const logoutLabel = document.querySelector('.logout-label');
+if (logoutLabel) {
+  logoutLabel.textContent =
+    `Выйти из ${PROVIDER_LABELS[provider]}`;
+}
 
   startCountdown(provider);
   show('user-section');
