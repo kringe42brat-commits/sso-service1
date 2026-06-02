@@ -245,11 +245,6 @@ function renderUserFromSession(provider) {
   renderSidebar();
 }
 
-  startCountdown(provider);
-  show('user-section');
-  renderSidebar();
-}
-
 // ── COUNTDOWN ────────────────────────────────
 let _cd = null;
 function startCountdown(provider) {
