@@ -416,14 +416,18 @@ else if (qp.get('token')) provider = 'vk'; // временно для VK
     if (userData) {
       console.log(`[OAUTH] Got user data:`, userData);
 
-      saveSession(provider, {
-        token: token,
-        name: userData.name || userData.userId,
-        userId: userData.userId,
-        provider: userData.provider,
-        email: userData.email || null,
-        ts: Date.now()
-      });
+     const actualProvider = userData.provider;
+
+saveSession(actualProvider, {
+  token: token,
+  name: userData.name || userData.userId,
+  userId: userData.userId,
+  provider: actualProvider,
+  email: userData.email || null,
+  ts: Date.now()
+});
+
+renderUserFromSession(actualProvider);
 
       console.log(`[OAUTH] Session saved for ${provider}`);
       renderUserFromSession(provider);
