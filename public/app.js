@@ -358,9 +358,14 @@ document.addEventListener('keydown', e => {
 // ── HANDLE OAUTH CALLBACK ────────────────────
 async function handleOAuthCallback() {
   const qp = new URLSearchParams(window.location.search);
-  const token = qp.get('vk_token') || qp.get('ya_token') || qp.get('mr_token');
-  const error = qp.get('error') || qp.get('auth_error');
 
+  const token =
+    qp.get('vk_token') ||
+    qp.get('ya_token') ||
+    qp.get('mr_token') ||
+    qp.get('token');
+
+  const error = qp.get('error') || qp.get('auth_error');
   console.log(`[OAUTH] Checking URL params. Token present: ${!!token}, Error: ${error || 'none'}`);
 
   if (error) {
@@ -375,10 +380,12 @@ async function handleOAuthCallback() {
     return false;
   }
 
-  let provider = null;
-  if (qp.get('vk_token')) provider = 'vk';
-  else if (qp.get('ya_token')) provider = 'yandex';
-  else if (qp.get('mr_token')) provider = 'mailru';
+let provider = null;
+
+if (qp.get('vk_token')) provider = 'vk';
+else if (qp.get('ya_token')) provider = 'yandex';
+else if (qp.get('mr_token')) provider = 'mailru';
+else if (qp.get('token')) provider = 'vk'; // временно для VK
 
   if (!provider) {
     showToast('Неизвестный провайдер', 'err');
