@@ -11,7 +11,7 @@ const ERROR_LABELS = {
 };
 
 // ── PER-PROVIDER SESSIONS ──────────────────────
-const SK = 'sso_sessions_v6';
+const SK = 'sso_sessions_v7';
 
 function getAllSessions() {
   try { return JSON.parse(localStorage.getItem(SK) || '{}'); }
@@ -40,7 +40,7 @@ function getActiveProvider() {
 }
 
 // ── FETCH ────────────────────────────────────
-async function apiFetch(url, opts={}, ms=15000) {
+async function apiFetch(url, opts={}, ms=30000) {
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -76,7 +76,7 @@ function setLoadingMsg(msg) {
 
 function showToast(msg, type='') {
   const t = document.getElementById('toast');
-  if (!t) return;
+  if (!t) { alert(msg); return; }
   t.textContent = msg;
   t.className = `toast show${type ? ' toast-'+type : ''}`;
   setTimeout(() => t.classList.remove('show'), 4500);
@@ -86,7 +86,7 @@ const PM = {vk:'vk', yandex:'ya', mailru:'mail'};
 function setButtonLoading(p, on) {
   const btn   = document.getElementById(`btn-${PM[p]}`);
   const arrow = document.getElementById(`arrow-${PM[p]}`);
-  if (!btn) return;
+  if (!btn) { console.warn(`[UI] Кнопка btn-${PM[p]} не найдена`); return; }
   btn.disabled = on;
   if (arrow) arrow.innerHTML = on ? '<span class="spinner-inline"></span>' : '→';
 }
@@ -94,29 +94,28 @@ function setButtonLoading(p, on) {
 // ── LOGIN ─────────────────────────────────────
 async function login(p) {
   console.log(`[LOGIN] Starting login for ${p}`);
-  // Always clear pending state before new login
   sessionStorage.removeItem('sso_pending_provider');
   sessionStorage.setItem('sso_pending_provider', p);
 
   setButtonLoading(p, true);
   try {
-    const res = await apiFetch(`/auth/${p}`, {}, 25000);
+    const res = await apiFetch(`/auth/${p}`, {}, 60000);
     if (!res.ok) {
       const errText = await res.text();
       throw new Error(`HTTP ${res.status}: ${errText}`);
     }
     const { authUrl } = await res.json();
+    if (!authUrl) throw new Error('Сервер вернул пустой authUrl');
     console.log(`[LOGIN] Got authUrl, redirecting...`);
     window.location.href = authUrl;
   } catch(e) {
     console.error(`[LOGIN] Error:`, e);
     setButtonLoading(p, false);
-    showToast(
-      e.name === 'AbortError'
-        ? 'Сервер не отвечает — подождите ~30 сек'
-        : 'Ошибка соединения: ' + e.message,
-      'err'
-    );
+    const msg = e.name === 'AbortError'
+      ? 'Сервер не отвечает (возможно, он спит на Render). Подождите ~30-60 сек и попробуйте снова.'
+      : 'Ошибка соединения: ' + e.message;
+    showToast(msg, 'err');
+    alert(msg);
   }
 }
 
@@ -172,7 +171,6 @@ async function logoutProvider(provider) {
   console.log(`[LOGOUT] Logging out from ${provider}`);
   const sess = getSession(provider);
 
-  // Send logout to server - token might be expired, but server handles this
   try { 
     console.log(`[LOGOUT] Sending logout request`);
     const headers = (sess && sess.token) ? { 'Authorization': `Bearer ${sess.token}` } : {};
@@ -187,7 +185,6 @@ async function logoutProvider(provider) {
     console.error(`[LOGOUT] Server logout error:`, e);
   }
 
-  // ALWAYS clear client-side session regardless of server response
   console.log(`[LOGOUT] Clearing client session for ${provider}`);
   removeSession(provider);
   stopCountdown();
@@ -221,13 +218,14 @@ function renderUserFromSession(provider) {
   const name = sess.name || sess.userId || 'Пользователь';
 
   document.getElementById('user-name').textContent = name;
+  document.getElementById('user-email').textContent = sess.email || '—';
+  document.getElementById('user-email-detail').textContent = sess.email || '—';
   document.getElementById('user-id-display').textContent = sess.userId || '—';
   document.getElementById('user-id').textContent = sess.userId || '—';
   document.getElementById('user-provider').textContent = PROVIDER_LABELS[provider] || provider;
   document.getElementById('provider-badge').textContent = PROVIDER_LABELS[provider] || provider;
   document.getElementById('provider-icon').textContent = PROVIDER_ICONS[provider] || '👤';
 
-  // Update logout button
   const logoutBtn = document.getElementById('btn-logout');
   logoutBtn.onclick = () => logoutProvider(provider);
   document.getElementById('logout-text').textContent = `Выйти из ${PROVIDER_LABELS[provider]}`;
@@ -256,7 +254,7 @@ function startCountdown(provider) {
     const m = Math.floor(left/60).toString().padStart(2,'0');
     const s = (left%60).toString().padStart(2,'0');
     el.textContent = `${m}:${s}`;
-    el.style.color = left<120 ? 'var(--err)' : left<300 ? '#d29922' : 'var(--ok)';
+    el.style.color = left<<120 ? 'var(--err)' : left<<300 ? '#d29922' : 'var(--ok)';
     if (left === 0) {
       tryRefresh(provider).then(ok => { 
         if (ok) { 
@@ -273,9 +271,9 @@ function stopCountdown() { if(_cd){clearInterval(_cd);_cd=null;} }
 
 // ── SIDEBAR ───────────────────────────────────
 const ICONS = {
-  vk:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.579 6.855c.14-.465 0-.806-.662-.806h-2.193c-.558 0-.813.295-.953.619 0 0-1.115 2.719-2.695 4.482-.513.513-.745.675-1.024.675-.14 0-.343-.162-.343-.627V6.855c0-.558-.162-.806-.626-.806H9.642c-.348 0-.557.258-.557.504 0 .528.79.65.871 2.138v3.228c0 .707-.128.836-.406.836-.745 0-2.557-2.731-3.63-5.858C5.715 6.419 5.504 6.05 4.944 6.05H2.75C2.122 6.05 2 6.345 2 6.669c0 .582.745 3.473 3.473 7.299C7.297 16.588 9.909 18 12.279 18c1.442 0 1.62-.325 1.62-.882v-1.97c0-.628.132-.753.576-.753.326 0 .885.163 2.193 1.425 1.494 1.494 1.74 2.18 2.58 2.18h2.193c.627 0 .941-.325.76-.966-.198-.639-.91-1.568-1.86-2.669-.513-.605-1.282-1.257-1.515-1.583-.326-.42-.233-.605 0-.977 0 0 2.681-3.777 2.961-5.059z"/></svg>`,
-  yandex:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.32 21h-2.495V13.51H9.21L5.88 21H3.15l3.555-7.88c-1.98-.84-3.03-2.505-3.03-4.74C3.675 5.085 5.88 3 9.45 3H13.32v18zm-2.495-9.495V5.01H9.36c-1.98 0-3.15 1.17-3.15 3.18 0 1.98 1.125 3.315 3.285 3.315h1.33z"/></svg>`,
-  mailru:`<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 13.5L2 7V18h20V7l-10 6.5zM12 11L2 5h20l-10 6z"/></svg>`,
+  vk:`<<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.579 6.855c.14-.465 0-.806-.662-.806h-2.193c-.558 0-.813.295-.953.619 0 0-1.115 2.719-2.695 4.482-.513.513-.745.675-1.024.675-.14 0-.343-.162-.343-.627V6.855c0-.558-.162-.806-.626-.806H9.642c-.348 0-.557.258-.557.504 0 .528.79.65.871 2.138v3.228c0 .707-.128.836-.406.836-.745 0-2.557-2.731-3.63-5.858C5.715 6.419 5.504 6.05 4.944 6.05H2.75C2.122 6.05 2 6.345 2 6.669c0 .582.745 3.473 3.473 7.299C7.297 16.588 9.909 18 12.279 18c1.442 0 1.62-.325 1.62-.882v-1.97c0-.628.132-.753.576-.753.326 0 .885.163 2.193 1.425 1.494 1.494 1.74 2.18 2.58 2.18h2.193c.627 0 .941-.325.76-.966-.198-.639-.91-1.568-1.86-2.669-.513-.605-1.282-1.257-1.515-1.583-.326-.42-.233-.605 0-.977 0 0 2.681-3.777 2.961-5.059z"/></svg>`,
+  yandex:`<<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.32 21h-2.495V13.51H9.21L5.88 21H3.15l3.555-7.88c-1.98-.84-3.03-2.505-3.03-4.74C3.675 5.085 5.88 3 9.45 3H13.32v18zm-2.495-9.495V5.01H9.36c-1.98 0-3.15 1.17-3.15 3.18 0 1.98 1.125 3.315 3.285 3.315h1.33z"/></svg>`,
+  mailru:`<<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 13.5L2 7V18h20V7l-10 6.5zM12 11L2 5h20l-10 6z"/></svg>`,
 };
 const COLORS = {vk:'#0077ff', yandex:'#fc3f1d', mailru:'#168de2'};
 const ORDER  = ['vk','yandex','mailru'];
@@ -377,7 +375,6 @@ async function handleOAuthCallback() {
     return false;
   }
 
-  // Determine provider from URL param
   let provider = null;
   if (qp.get('vk_token')) provider = 'vk';
   else if (qp.get('ya_token')) provider = 'yandex';
@@ -391,13 +388,11 @@ async function handleOAuthCallback() {
 
   console.log(`[OAUTH] Got token for ${provider}`);
 
-  // Clean URL immediately
   history.replaceState(null, '', window.location.pathname);
 
   setLoadingMsg('Загружаем профиль...');
   show('loading-screen');
 
-  // Try to fetch user data with the token
   for (let i = 0; i < 3; i++) {
     if (i > 0) { 
       setLoadingMsg(`Повтор ${i}...`); 
@@ -409,12 +404,12 @@ async function handleOAuthCallback() {
     if (userData) {
       console.log(`[OAUTH] Got user data:`, userData);
 
-      // Save session for this provider
       saveSession(provider, {
         token: token,
         name: userData.name || userData.userId,
         userId: userData.userId,
         provider: userData.provider,
+        email: userData.email || null,
         ts: Date.now()
       });
 
@@ -437,7 +432,6 @@ async function handleOAuthCallback() {
 async function checkAuth() {
   console.log(`[INIT] Checking auth state...`);
 
-  // First, check if we're returning from OAuth
   const handled = await handleOAuthCallback();
   if (handled) {
     console.log(`[INIT] OAuth callback handled successfully`);
@@ -447,13 +441,11 @@ async function checkAuth() {
   const wt = setTimeout(() => setLoadingMsg('Сервер запускается, подождите...'), 4000);
 
   try {
-    // Check if we have any saved sessions
     const sessions = getAllSessions();
     const providers = Object.keys(sessions);
     console.log(`[INIT] Found sessions:`, providers);
 
     if (providers.length > 0) {
-      // Try to refresh each session
       for (const provider of providers) {
         console.log(`[INIT] Trying refresh for ${provider}`);
         const ok = await tryRefresh(provider);
@@ -463,12 +455,12 @@ async function checkAuth() {
           if (sess) {
             const userData = await fetchMe(sess.token);
             if (userData) {
-              // Update session with fresh data
               saveSession(provider, {
                 token: sess.token,
                 name: userData.name || userData.userId,
                 userId: userData.userId,
                 provider: userData.provider,
+                email: userData.email || null,
                 ts: Date.now()
               });
 
@@ -489,7 +481,6 @@ async function checkAuth() {
 
   clearTimeout(wt);
 
-  // If we still have sessions after failed refreshes, show the first one
   const sessions = getAllSessions();
   if (Object.keys(sessions).length > 0) {
     const first = Object.keys(sessions)[0];
