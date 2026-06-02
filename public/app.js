@@ -239,6 +239,20 @@ function renderUserFromSession(provider) {
       `Выйти из ${PROVIDER_LABELS[provider]}`;
   }
 
+  // ── АВАТАРКА ───────────────────────────────
+  const avatarImg = document.getElementById('avatar-img');
+  const avatarFallback = document.getElementById('avatar-fallback');
+
+  if (sess.avatar && avatarImg && avatarFallback) {
+    avatarImg.src = sess.avatar;
+    avatarImg.style.display = 'block';
+    avatarFallback.style.display = 'none';
+  } else if (avatarImg && avatarFallback) {
+    avatarImg.style.display = 'none';
+    avatarFallback.style.display = 'flex';
+    avatarFallback.textContent = (sess.name || '?')[0].toUpperCase();
+  }
+
   startCountdown(provider);
   show('user-section');
   renderSidebar();
@@ -422,12 +436,14 @@ else if (qp.get('token')) provider = 'vk'; // временно для VK
 
      const actualProvider = userData.provider;
 
+// В handleOAuthCallback и checkAuth, внутри saveSession:
 saveSession(actualProvider, {
   token: token,
   name: userData.name || userData.userId,
   userId: userData.userId,
   provider: actualProvider,
   email: userData.email || null,
+  avatar: userData.avatar || null,  // ← добавь это
   ts: Date.now()
 });
 
