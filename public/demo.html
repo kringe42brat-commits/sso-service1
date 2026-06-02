@@ -14,346 +14,263 @@
       --muted: #656d76;
       --accent: #0969da;
       --ok: #1a7f37;
-      --ok-bg: #dafbe1;
-      --ok-border: #aceebb;
       --err: #cf222e;
-      --err-bg: #ffebe9;
       --vk: #0077ff;
       --ya: #fc3f1d;
       --mail: #168de2;
     }
-    * { margin:0; padding:0; box-sizing:border-box; }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
-      font-family:'Inter',system-ui,sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      min-height:100vh;
-      display:flex;
-      flex-direction:column;
-    }
-
-    /* Header */
-    header {
-      border-bottom:1px solid var(--border);
-      background:var(--surface);
-      padding:0 24px;
-      height:56px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-    }
-    .logo {
-      display:flex;align-items:center;gap:8px;
-      font-size:15px;font-weight:600;color:var(--text);
-      text-decoration:none;
-    }
-    .logo-icon {
-      width:28px;height:28px;
-      background:#24292f;
-      border-radius:6px;
-      display:flex;align-items:center;justify-content:center;
-      font-size:14px;
-    }
-    .header-nav { display:flex;align-items:center;gap:20px; }
-    .nav-link { font-size:13px;color:var(--muted);text-decoration:none; }
-    .nav-link:hover { color:var(--text); }
-
-    /* Main */
-    main {
-      flex:1;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding:40px 24px;
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      line-height: 1.5;
     }
 
     .card {
-      background:var(--surface);
-      border:1px solid var(--border);
-      border-radius:8px;
-      width:100%;
-      max-width:400px;
-      overflow:hidden;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 380px;
+      padding: 32px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
     }
-    .card-body { padding:24px; }
 
     /* Login state */
-    #state-login { display:block; }
-    .login-header { text-align:center; margin-bottom:24px; }
-    .login-icon {
-      width:48px;height:48px;
-      background:var(--bg);
-      border:1px solid var(--border);
-      border-radius:8px;
-      display:flex;align-items:center;justify-content:center;
-      font-size:22px;
-      margin:0 auto 16px;
+    .login-header {
+      text-align: center;
+      margin-bottom: 24px;
     }
-    .login-header h2 { font-size:16px;font-weight:600;margin-bottom:4px; }
-    .login-header p { font-size:13px;color:var(--muted); }
+    .login-icon {
+      width: 36px; height: 36px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      margin: 0 auto 16px;
+    }
+    h1 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: var(--muted); }
+
+    .divider {
+      display: flex; align-items: center; gap: 10px;
+      margin: 20px 0;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
 
     .btn-sso {
-      display:flex;align-items:center;justify-content:center;gap:8px;
-      width:100%;padding:10px 16px;
-      background:#24292f;
-      border:1px solid rgba(31,35,40,.15);
-      border-radius:6px;
-      color:#ffffff;
-      font-family:inherit;font-size:14px;font-weight:500;
-      cursor:pointer;
-      transition:background .15s;
-      text-decoration:none;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 10px 14px;
+      background: #24292f;
+      border: 1px solid rgba(31,35,40,.15);
+      border-radius: 6px;
+      color: #fff;
+      font-family: inherit; font-size: 14px; font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+      text-decoration: none;
     }
-    .btn-sso:hover { background:#32383f; }
-    .btn-sso svg { width:16px;height:16px; }
+    .btn-sso:hover { background: #32383f; }
 
-    .divider-text {
-      text-align:center;
-      font-size:12px;
-      color:var(--muted);
-      margin:16px 0;
-      position:relative;
+    .providers {
+      display: flex; gap: 6px; justify-content: center;
     }
-    .divider-text::before, .divider-text::after {
-      content:'';position:absolute;top:50%;
-      width:calc(50% - 30px);height:1px;
-      background:var(--border);
-    }
-    .divider-text::before { left:0; }
-    .divider-text::after  { right:0; }
-
-    .providers { display:flex;gap:6px; }
     .provider-badge {
-      flex:1;display:flex;align-items:center;justify-content:center;gap:5px;
-      padding:7px;
-      border:1px solid var(--border);border-radius:6px;
-      font-size:11px;color:var(--muted);
-      background:var(--bg);
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
     }
-    .provider-dot { width:8px;height:8px;border-radius:50%; }
+    .provider-dot { width: 7px; height: 7px; border-radius: 50%; }
 
     /* User state */
-    #state-user { display:none; }
+    #state-user { display: none; }
 
-    .user-header {
-      background:var(--ok-bg);
-      border-bottom:1px solid var(--ok-border);
-      padding:12px 24px;
-      display:flex;align-items:center;gap:8px;
-      font-size:13px;color:var(--ok);
-      font-weight:500;
+    .avatar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .avatar-fallback {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; font-weight: 600; color: var(--muted); flex-shrink: 0;
     }
-    .user-header-dot {
-      width:7px;height:7px;border-radius:50%;
-      background:var(--ok);
-      animation:blink 2s ease-in-out infinite;
-    }
-    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-
-    .user-profile { display:flex;align-items:center;gap:12px;margin-bottom:20px; }
-    .user-avatar {
-      width:44px;height:44px;border-radius:50%;
-      object-fit:cover;
-      border:2px solid var(--border);
-      display:none;
-    }
-    .user-avatar-fallback {
-      width:44px;height:44px;border-radius:50%;
-      background:var(--bg);
-      border:2px solid var(--border);
-      display:flex;align-items:center;justify-content:center;
-      font-size:16px;font-weight:600;color:var(--muted);
-      flex-shrink:0;
-    }
-    .user-name { font-size:15px;font-weight:600;margin-bottom:2px; }
-    .user-email-text { font-size:12px;color:var(--muted); }
-    .user-prov-badge {
-      display:inline-flex;align-items:center;gap:4px;
-      padding:2px 8px;
-      border-radius:20px;
-      font-size:11px;font-weight:500;
-      margin-top:4px;
+    .user-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+    .user-email { font-size: 12px; color: var(--muted); }
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 4px;
+      font-size: 11px; font-weight: 500;
+      background: rgba(9,105,218,.06);
+      border: 1px solid var(--border);
+      margin-top: 6px;
+      color: var(--accent);
     }
 
-    .data-block {
-      border:1px solid var(--border);
-      border-radius:6px;
-      overflow:hidden;
-      margin-bottom:16px;
-      font-size:13px;
+    .session-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(26,127,55,.06);
+      border: 1px solid rgba(26,127,55,.2);
+      border-radius: 6px;
+      margin-bottom: 14px;
+      font-size: 12px;
     }
-    .data-row {
-      display:flex;justify-content:space-between;align-items:center;
-      padding:8px 12px;
-      border-bottom:1px solid var(--border);
+    .session-left { display: flex; align-items: center; gap: 6px; color: var(--ok); }
+    .session-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--ok);
+      animation: blink 2s ease-in-out infinite;
     }
-    .data-row:last-child { border-bottom:none; }
-    .data-key { color:var(--muted);font-size:12px; }
-    .data-val { font-weight:500;word-break:break-all;text-align:right;max-width:65%; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    .access-token-block {
-      background:var(--bg);border:1px solid var(--border);
-      border-radius:6px;padding:10px 12px;
-      margin-bottom:16px;
-      font-family:monospace;font-size:11px;
-      color:var(--muted);
-      word-break:break-all;
-      line-height:1.5;
+    .info-block {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 14px;
     }
-    .access-token-label { font-size:11px;color:var(--muted);margin-bottom:6px;font-family:inherit; }
+    .info-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: var(--muted); font-size: 12px; }
+    .info-val { color: var(--text); font-weight: 500; word-break: break-all; text-align: right; max-width: 60%; }
 
-    .btn-logout-demo {
-      display:flex;align-items:center;justify-content:center;gap:6px;
-      width:100%;padding:9px;
-      background:transparent;
-      border:1px solid var(--border);
-      border-radius:6px;
-      color:var(--err);
-      font-family:inherit;font-size:13px;font-weight:500;
-      cursor:pointer;
-      transition:background .15s,border-color .15s;
+    .btn-logout {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; padding: 9px;
+      background: transparent;
+      border: 1px solid rgba(207,34,46,.3);
+      border-radius: 6px;
+      color: var(--err);
+      font-family: inherit; font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
     }
-    .btn-logout-demo:hover { background:var(--err-bg);border-color:rgba(207,34,46,.3); }
+    .btn-logout:hover { background: rgba(207,34,46,.08); border-color: rgba(207,34,46,.5); }
 
     /* Loading */
-    #state-loading { display:none;text-align:center;padding:8px 0; }
-    .spinner { width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 10px; }
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .loading-text { font-size:13px;color:var(--muted); }
-
-    /* Footer */
-    footer {
-      border-top:1px solid var(--border);
-      padding:16px 24px;
-      text-align:center;
-      font-size:12px;
-      color:var(--muted);
-    }
-    footer a { color:var(--accent);text-decoration:none; }
-    footer a:hover { text-decoration:underline; }
+    #state-loading { display: none; text-align: center; padding: 8px 0; }
+    .spinner { width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 10px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 13px; color: var(--muted); }
 
     /* Toast */
     .toast {
-      position:fixed;bottom:20px;left:50%;
-      transform:translateX(-50%) translateY(60px);
-      background:#24292f;color:#e6edf3;
-      padding:9px 16px;border-radius:6px;
-      font-size:13px;opacity:0;
-      transition:all .25s ease;z-index:100;
-      pointer-events:none;
+      position: fixed; bottom: 20px; left: 50%;
+      transform: translateX(-50%) translateY(60px);
+      background: #24292f; color: #fff;
+      padding: 10px 16px; border-radius: 6px;
+      font-size: 13px; opacity: 0;
+      transition: all .25s ease; z-index: 100;
+      pointer-events: none;
     }
-    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
 
-<header>
-  <a class="logo" href="/demo.html">
-    <div class="logo-icon">🏢</div>
-    Demo App
-  </a>
-  <nav class="header-nav">
-    <a class="nav-link" href="/">SSO Сервис</a>
-    <a class="nav-link" href="https://github.com/kringe42brat-commits/sso-service1" target="_blank">GitHub</a>
-  </nav>
-</header>
+<div class="card">
+  <!-- Loading -->
+  <div id="state-loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Проверяем авторизацию...</div>
+  </div>
 
-<main>
-  <div class="card">
-
-    <!-- Loading -->
-    <div class="card-body" id="state-loading">
-      <div class="spinner"></div>
-      <div class="loading-text">Проверяем авторизацию...</div>
+  <!-- Login -->
+  <div id="state-login">
+    <div class="login-header">
+      <div class="login-icon">🔒</div>
+      <h1>Demo App</h1>
+      <p class="subtitle">Тестовое приложение для проверки SSO</p>
     </div>
 
-    <!-- Not logged in -->
-    <div class="card-body" id="state-login">
-      <div class="login-header">
-        <div class="login-icon">🔒</div>
-        <h2>Вход в Demo App</h2>
-        <p>Используйте единый аккаунт для входа</p>
+    <a href="/" class="btn-sso" id="btn-login-sso">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+      </svg>
+      Войти через SSO
+    </a>
+
+    <div class="divider">провайдеры</div>
+
+    <div class="providers">
+      <div class="provider-badge">
+        <div class="provider-dot" style="background:var(--vk)"></div>VK ID
       </div>
+      <div class="provider-badge">
+        <div class="provider-dot" style="background:var(--ya)"></div>Яндекс
+      </div>
+      <div class="provider-badge">
+        <div class="provider-dot" style="background:var(--mail)"></div>Mail.ru
+      </div>
+    </div>
+  </div>
 
-      <button class="btn-sso" id="btn-login-sso">
-        <svg viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-        </svg>
-        Войти через SSO
-      </button>
-
-      <div class="divider-text">поддерживаемые провайдеры</div>
-
-      <div class="providers">
-        <div class="provider-badge">
-          <div class="provider-dot" style="background:#0077ff"></div>VK ID
-        </div>
-        <div class="provider-badge">
-          <div class="provider-dot" style="background:#fc3f1d"></div>Яндекс
-        </div>
-        <div class="provider-badge">
-          <div class="provider-dot" style="background:#168de2"></div>Mail.ru
-        </div>
+  <!-- User -->
+  <div id="state-user" style="display:none">
+    <div class="avatar-row">
+      <div class="avatar-fallback" id="demo-avatar-fallback">?</div>
+      <img id="demo-avatar" style="display:none;width:40px;height:40px;border-radius:50%;object-fit:cover;border:1px solid var(--border);" alt="">
+      <div>
+        <div class="user-name" id="demo-name">—</div>
+        <div class="user-email" id="demo-email">—</div>
+        <div class="badge" id="demo-badge">—</div>
       </div>
     </div>
 
-    <!-- Logged in -->
-    <div id="state-user">
-      <div class="user-header">
-        <div class="user-header-dot"></div>
+    <div class="session-row">
+      <div class="session-left">
+        <div class="session-dot"></div>
         Авторизован через SSO
       </div>
-      <div class="card-body">
-        <div class="user-profile">
-          <div class="user-avatar-fallback" id="demo-avatar-fallback">?</div>
-          <img id="demo-avatar" class="user-avatar" alt="">
-          <div>
-            <div class="user-name" id="demo-name">—</div>
-            <div class="user-email-text" id="demo-email">—</div>
-            <div class="user-prov-badge" id="demo-badge">—</div>
-          </div>
-        </div>
+    </div>
 
-        <div class="data-block">
-          <div class="data-row">
-            <span class="data-key">User ID</span>
-            <span class="data-val" id="demo-uid">—</span>
-          </div>
-          <div class="data-row">
-            <span class="data-key">Email</span>
-            <span class="data-val" id="demo-email2">—</span>
-          </div>
-          <div class="data-row">
-            <span class="data-key">Провайдер</span>
-            <span class="data-val" id="demo-provider">—</span>
-          </div>
-          <div class="data-row">
-            <span class="data-key">Cookie токен</span>
-            <span class="data-val" style="color:#1a7f37;font-size:11px">✓ Установлен</span>
-          </div>
-        </div>
-
-        <div class="access-token-label">Access token (из cookie):</div>
-        <div class="access-token-block" id="demo-token-preview">—</div>
-
-        <button class="btn-logout-demo" id="btn-demo-logout">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16,17 21,12 16,7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          Выйти
-        </button>
+    <div class="info-block">
+      <div class="info-row">
+        <span class="info-label">User ID</span>
+        <span class="info-val" id="demo-uid">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Email</span>
+        <span class="info-val" id="demo-email2">—</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Провайдер</span>
+        <span class="info-val" id="demo-provider">—</span>
       </div>
     </div>
 
+    <button class="btn-logout" id="btn-demo-logout">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16,17 21,12 16,7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+      Выйти
+    </button>
   </div>
-</main>
-
-<footer>
-  Demo App — тестовый клиент для <a href="/">SSO Service</a>.
-  Авторизация через <a href="https://github.com/kringe42brat-commits/sso-service1" target="_blank">единый сервис</a>.
-</footer>
+</div>
 
 <div class="toast" id="demo-toast"></div>
 
