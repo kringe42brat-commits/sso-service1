@@ -223,7 +223,6 @@ function renderUserFromSession(provider) {
   const name = sess.name || sess.userId || 'Пользователь';
 
   document.getElementById('user-name').textContent = name;
-  document.getElementById('user-email').textContent = sess.email || '—';
   document.getElementById('user-email-detail').textContent = sess.email || '—';
   document.getElementById('user-id').textContent = sess.userId || '—';
   document.getElementById('user-provider').textContent =
