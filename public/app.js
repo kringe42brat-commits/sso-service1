@@ -404,12 +404,12 @@ async function handleOAuthCallback() {
     return false;
   }
 
-let provider = null;
+  let provider = null;
 
-if (qp.get('vk_token')) provider = 'vk';
-else if (qp.get('ya_token')) provider = 'yandex';
-else if (qp.get('mr_token')) provider = 'mailru';
-else if (qp.get('token')) provider = 'vk'; // временно для VK
+  if (qp.get('vk_token')) provider = 'vk';
+  else if (qp.get('ya_token')) provider = 'yandex';
+  else if (qp.get('mr_token')) provider = 'mailru';
+  else if (qp.get('token')) provider = 'vk';
 
   if (!provider) {
     showToast('Неизвестный провайдер', 'err');
@@ -435,24 +435,20 @@ else if (qp.get('token')) provider = 'vk'; // временно для VK
     if (userData) {
       console.log(`[OAUTH] Got user data:`, userData);
 
-     const actualProvider = userData.provider;
+      const actualProvider = userData.provider;
 
-// В handleOAuthCallback и checkAuth, внутри saveSession:
-saveSession(actualProvider, {
-  token: token,
-  name: userData.name || userData.userId,
-  userId: userData.userId,
-  provider: actualProvider,
-  email: userData.email || null,
-  avatar: userData.avatar || null,  // ← добавь это
-  ts: Date.now()
-});
+      saveSession(actualProvider, {
+        token: token,
+        name: userData.name || userData.userId,
+        userId: userData.userId,
+        provider: actualProvider,
+        email: userData.email || null,
+        avatar: userData.avatar || null,
+        ts: Date.now()
+      });
 
-renderUserFromSession(actualProvider);
-
-      console.log(`[OAUTH] Session saved for ${provider}`);
-      renderUserFromSession(provider);
-      showToast(`Вход через ${PROVIDER_LABELS[provider]} выполнен`, 'ok');
+      renderUserFromSession(actualProvider);
+      showToast(`Вход через ${PROVIDER_LABELS[actualProvider]} выполнен`, 'ok');
       return true;
     }
 
@@ -498,6 +494,7 @@ async function checkAuth() {
                 userId: userData.userId,
                 provider: userData.provider,
                 email: userData.email || null,
+                avatar: userData.avatar || null,
                 ts: Date.now()
               });
 
