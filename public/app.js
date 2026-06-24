@@ -26,15 +26,23 @@ function getAllSessions() {
 function saveSession(provider, token) {
   const user = decodeJwt(token);
   if (!user) return;
-  const all = getAllSessions();
-  all[provider] = { token, user, savedAt: Date.now() };
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+  try {
+    const all = getAllSessions();
+    all[provider] = { token, user, savedAt: Date.now() };
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Ошибка сохранения сессии:', e);
+  }
 }
 
 function removeSession(provider) {
-  const all = getAllSessions();
-  delete all[provider];
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+  try {
+    const all = getAllSessions();
+    delete all[provider];
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Ошибка удаления сессии:', e);
+  }
 }
 
 function getSession(provider) {
@@ -147,12 +155,26 @@ function stopCountdown() {
 // ════════════════════════════════════════════
 // ПОКАЗАТЬ ПРОФИЛЬ КОНКРЕТНОГО ПРОВАЙДЕРА
 // ════════════════════════════════════════════
-function showProfile(provider) {
+function showProfile(provider, _visited) {
+  // Защита от рекурсии: если уже показываем этого провайдера — выходим
+  if (activeView === provider) return;
+  
+  _visited = _visited || new Set();
+  if (_visited.has(provider)) {
+    // Зациклились — показываем login
+    activeView = null;
+    stopCountdown();
+    show('login-section');
+    return;
+  }
+  _visited.add(provider);
+
   const sess = getSession(provider);
 
   // Нет сессии — предлагаем войти
   if (!sess) {
     activeView = null;
+    stopCountdown(); // ← ИСПРАВЛЕНО: останавливаем таймер
     show('login-section');
     return;
   }
@@ -166,8 +188,14 @@ function showProfile(provider) {
       const s = getSession(p);
       return s && !isExpired(s.token);
     });
-    if (others.length > 0) { showProfile(others[0]); }
-    else { activeView = null; show('login-section'); }
+    if (others.length > 0) { 
+      showProfile(others[0], _visited); 
+    }
+    else { 
+      activeView = null; 
+      stopCountdown(); // ← ИСПРАВЛЕНО: останавливаем таймер
+      show('login-section'); 
+    }
     return;
   }
 
@@ -365,16 +393,16 @@ function renderSidebar() {
       </div>
     </div>`;
 
-  // Обработчики
-  panel.querySelectorAll('[data-action]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      const { action, p } = el.dataset;
-      if (action === 'view')   showProfile(p);
-      if (action === 'login')  login(p);
-      if (action === 'logout') logoutProvider(p);
-    });
-  });
+  // ← ИСПРАВЛЕНО: единый делегированный обработчик вместо множества addEventListener
+  panel.onclick = e => {
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    e.stopPropagation();
+    const { action, p } = el.dataset;
+    if (action === 'view')   showProfile(p);
+    if (action === 'login')  login(p);
+    if (action === 'logout') logoutProvider(p);
+  };
 }
 
 // ════════════════════════════════════════════
@@ -417,7 +445,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // ════════════════════════════════════════
   const incomingReturn = new URLSearchParams(window.location.search).get('return');
   if (incomingReturn && /^https?:\/\//.test(incomingReturn)) {
-    sessionStorage.setItem('sso_return', incomingReturn);
+    // ← ИСПРАВЛЕНО: проверяем, не использовали ли уже этот return (защита от цикла)
+    if (!sessionStorage.getItem('sso_return_used')) {
+      sessionStorage.setItem('sso_return', incomingReturn);
+    }
   }
 
   // Читаем токен/ошибку из URL после OAuth redirect
@@ -455,6 +486,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Возврат на внешний сайт, если пришли оттуда — передаём токен в URL
     const returnUrl = sessionStorage.getItem('sso_return');
     if (returnUrl) {
+      // ← ИСПРАВЛЕНО: помечаем return как использованный, чтобы избежать цикла редиректов
+      sessionStorage.setItem('sso_return_used', '1');
       sessionStorage.removeItem('sso_return');
       const sep = returnUrl.includes('?') ? '&' : '?';
       setTimeout(() => { window.location.href = `${returnUrl}${sep}token=${token}`; }, 300);
