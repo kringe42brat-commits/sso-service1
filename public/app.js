@@ -14,7 +14,6 @@ const ERROR_LABELS = {
 
 // ════════════════════════════════════════════
 // ХРАНИЛИЩЕ СЕССИЙ (по одной на провайдер)
-// Каждый провайдер независим. Токены в localStorage.
 // ════════════════════════════════════════════
 const TOKENS_KEY = 'sso_sessions_v2';
 
@@ -55,42 +54,30 @@ function isExpired(token) {
   return (Date.now() / 1000) > d.exp;
 }
 
-// ИСПРАВЛЕННАЯ ФУНКЦИЯ ДЕКОДИРОВАНИЯ
 function decodeJwt(token) {
   try {
     const base64Url = token.split('.')[1];
     if (!base64Url) return null;
-
-    // 1. Конвертируем Base64Url в стандартный Base64
     let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-
-    // 2. Возвращаем удалённый "паддинг" (выравниваем длину строки)
     const pad = base64.length % 4;
-    if (pad) {
-      base64 += '='.repeat(4 - pad);
-    }
-
-    // 3. Декодируем строку с поддержкой кириллицы (UTF-8)
+    if (pad) base64 += '='.repeat(4 - pad);
     const jsonPayload = decodeURIComponent(
       window.atob(base64)
         .split('')
-        .map(function(c) {
-          return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        })
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
         .join('')
     );
-
     return JSON.parse(jsonPayload);
   } catch (e) {
     console.error('Ошибка декодирования JWT:', e);
-    return null; 
+    return null;
   }
 }
 
 // ════════════════════════════════════════════
 // UI
 // ════════════════════════════════════════════
-let activeView = null; // какой провайдер сейчас в главной карточке
+let activeView = null;
 
 const DISPLAY = {
   'loading-screen': 'flex',
@@ -129,7 +116,7 @@ function setButtonLoading(p, on) {
 }
 
 // ════════════════════════════════════════════
-// COUNTDOWN — привязан к конкретному токену
+// COUNTDOWN
 // ════════════════════════════════════════════
 let _cd = null;
 
@@ -153,15 +140,13 @@ function stopCountdown() {
 }
 
 // ════════════════════════════════════════════
-// ПОКАЗАТЬ ПРОФИЛЬ КОНКРЕТНОГО ПРОВАЙДЕРА
+// ПОКАЗАТЬ ПРОФИЛЬ
 // ════════════════════════════════════════════
 function showProfile(provider, _visited) {
-  // Защита от рекурсии: если уже показываем этого провайдера — выходим
   if (activeView === provider) return;
-  
+
   _visited = _visited || new Set();
   if (_visited.has(provider)) {
-    // Зациклились — показываем login
     activeView = null;
     stopCountdown();
     show('login-section');
@@ -171,15 +156,13 @@ function showProfile(provider, _visited) {
 
   const sess = getSession(provider);
 
-  // Нет сессии — предлагаем войти
   if (!sess) {
     activeView = null;
-    stopCountdown(); // ← ИСПРАВЛЕНО: останавливаем таймер
+    stopCountdown();
     show('login-section');
     return;
   }
 
-  // Токен истёк — удаляем, переключаемся
   if (isExpired(sess.token)) {
     removeSession(provider);
     renderSidebar();
@@ -188,13 +171,12 @@ function showProfile(provider, _visited) {
       const s = getSession(p);
       return s && !isExpired(s.token);
     });
-    if (others.length > 0) { 
-      showProfile(others[0], _visited); 
-    }
-    else { 
-      activeView = null; 
-      stopCountdown(); // ← ИСПРАВЛЕНО: останавливаем таймер
-      show('login-section'); 
+    if (others.length > 0) {
+      showProfile(others[0], _visited);
+    } else {
+      activeView = null;
+      stopCountdown();
+      show('login-section');
     }
     return;
   }
@@ -205,36 +187,47 @@ function showProfile(provider, _visited) {
   const color = PROVIDER_COLORS[provider] || '#666';
   const initials = name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
 
-  // Заполняем поля
-  document.getElementById('user-name').textContent          = name;
-  document.getElementById('user-email').textContent         = user.email || 'Email не указан';
-  document.getElementById('user-id').textContent            = user.sub;
-  document.getElementById('user-email-detail').textContent  = user.email || '—';
-  document.getElementById('user-provider').textContent      = PROVIDER_LABELS[provider];
-  document.getElementById('avatar-fallback').textContent    = initials;
-  document.getElementById('avatar-fallback').style.display  = '';
+  // Заполняем поля с защитой от null
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
 
-  // Аватар
-  const img = document.getElementById('avatar-img');
-  img.style.display = 'none';
-  if (user.av) {
-    img.onload  = () => { document.getElementById('avatar-fallback').style.display = 'none'; img.style.display = ''; };
-    img.onerror = () => { img.style.display = 'none'; };
-    img.src = user.av;
+  setText('user-name', name);
+  setText('user-id', user.sub);
+  setText('user-email-detail', user.email || '—');
+  setText('user-provider', PROVIDER_LABELS[provider]);
+
+  const fallback = document.getElementById('avatar-fallback');
+  if (fallback) {
+    fallback.textContent = initials;
+    fallback.style.display = '';
   }
 
-  // Бейдж
-  const badge = document.getElementById('provider-badge');
-  badge.textContent          = PROVIDER_LABELS[provider];
-  badge.style.background     = color + '18';
-  badge.style.color          = color;
-  badge.style.border         = `1px solid ${color}40`;
+  const img = document.getElementById('avatar-img');
+  if (img) {
+    img.style.display = 'none';
+    if (user.av) {
+      img.onload  = () => {
+        if (fallback) fallback.style.display = 'none';
+        img.style.display = '';
+      };
+      img.onerror = () => { img.style.display = 'none'; };
+      img.src = user.av;
+    }
+  }
 
-  // Кнопка выхода — показывает из какого аккаунта
+  const badge = document.getElementById('provider-badge');
+  if (badge) {
+    badge.textContent      = PROVIDER_LABELS[provider];
+    badge.style.background = color + '18';
+    badge.style.color      = color;
+    badge.style.border     = `1px solid ${color}40`;
+  }
+
   const lbl = document.querySelector('.logout-label');
   if (lbl) lbl.textContent = `Выйти из ${PROVIDER_LABELS[provider]}`;
 
-  // Таймер из exp поля токена
   const decoded = decodeJwt(sess.token);
   if (decoded?.exp) startCountdown(decoded.exp * 1000);
 
@@ -243,12 +236,11 @@ function showProfile(provider, _visited) {
 }
 
 // ════════════════════════════════════════════
-// ВЫХОД ИЗ КОНКРЕТНОГО ПРОВАЙДЕРА
+// ВЫХОД
 // ════════════════════════════════════════════
 async function logoutProvider(provider) {
   const sess = getSession(provider);
 
-  // Отзываем токен на сервере
   if (sess?.token) {
     try {
       await fetch('/auth/logout', {
@@ -259,12 +251,11 @@ async function logoutProvider(provider) {
           'X-Requested-With': 'XMLHttpRequest',
         },
       });
-    } catch { /* игнорируем — всё равно удалим локально */ }
+    } catch { /* игнорируем */ }
   }
 
   removeSession(provider);
 
-  // Останавливаем таймер ТОЛЬКО если смотрели именно этот профиль
   if (activeView === provider) {
     stopCountdown();
     const remaining = ORDER.filter(p => {
@@ -284,7 +275,7 @@ async function logoutProvider(provider) {
 }
 
 // ════════════════════════════════════════════
-// ЛОГИН (запуск OAuth)
+// ЛОГИН
 // ════════════════════════════════════════════
 async function login(p) {
   setButtonLoading(p, true);
@@ -393,7 +384,7 @@ function renderSidebar() {
       </div>
     </div>`;
 
-  // ← ИСПРАВЛЕНО: единый делегированный обработчик вместо множества addEventListener
+  // Единый делегированный обработчик — нет утечки слушателей
   panel.onclick = e => {
     const el = e.target.closest('[data-action]');
     if (!el) return;
@@ -425,33 +416,24 @@ document.addEventListener('keydown', e => {
 // ════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
 
-  // Кнопки логина (для экрана login-section)
   document.getElementById('btn-vk')?.addEventListener('click',   () => login('vk'));
   document.getElementById('btn-ya')?.addEventListener('click',   () => login('yandex'));
   document.getElementById('btn-mail')?.addEventListener('click', () => login('mailru'));
 
-  // Кнопка выхода — выходит только из activeView
   document.getElementById('btn-logout')?.addEventListener('click', () => {
     if (activeView) logoutProvider(activeView);
   });
 
   renderSidebar();
 
-  // ════════════════════════════════════════
-  // ВНЕШНИЕ САЙТЫ: ?return=URL
-  // Сторонний сайт прислал пользователя сюда и просит
-  // вернуть его обратно с токеном после входа.
-  // Сохраняем в sessionStorage — переживёт переход на VK/Яндекс/Mail.ru и обратно.
-  // ════════════════════════════════════════
+  // Внешние сайты: ?return=URL
   const incomingReturn = new URLSearchParams(window.location.search).get('return');
   if (incomingReturn && /^https?:\/\//.test(incomingReturn)) {
-    // ← ИСПРАВЛЕНО: проверяем, не использовали ли уже этот return (защита от цикла)
     if (!sessionStorage.getItem('sso_return_used')) {
       sessionStorage.setItem('sso_return', incomingReturn);
     }
   }
 
-  // Читаем токен/ошибку из URL после OAuth redirect
   const qp = new URLSearchParams(window.location.search);
   const hp = new URLSearchParams(window.location.hash.slice(1));
   history.replaceState(null, '', window.location.pathname);
@@ -464,7 +446,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const msg = ERROR_LABELS[error] || `Ошибка: ${error}`;
     const detail = qp.get('detail');
     showToast(detail ? `${msg}: ${detail}` : msg, 'err');
-    // Если есть живые сессии — показываем первую
     const alive = ORDER.find(p => { const s=getSession(p); return s&&!isExpired(s.token); });
     if (alive) showProfile(alive); else show('login-section');
     return;
@@ -483,10 +464,8 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Не удалось определить провайдер', 'err');
     }
 
-    // Возврат на внешний сайт, если пришли оттуда — передаём токен в URL
     const returnUrl = sessionStorage.getItem('sso_return');
     if (returnUrl) {
-      // ← ИСПРАВЛЕНО: помечаем return как использованный, чтобы избежать цикла редиректов
       sessionStorage.setItem('sso_return_used', '1');
       sessionStorage.removeItem('sso_return');
       const sep = returnUrl.includes('?') ? '&' : '?';
